@@ -1,16 +1,17 @@
 # the environment variables env_prefix is critical for the different AKS clusters
-env_prefix               = "neolix"
+env_prefix               = "chaos"
 location                 = "UAE North"
 kube_vnet_name           = "vnet-uaenorth"
-kube_version_prefix      = "1.33"
-kube_resource_group_name = "rg-neolix-test"
+kubernetes_version       = "1.36.5"
+kube_resource_group_name = "rg-chaos-test"
 cluster_name             = "test-aks-1"
 nodepool_nodes_count     = 2
-nodepool_vm_size         = "Standard_D2s_v3"
-network_dns_service_ip   = "172.15.0.10"
-network_service_cidr     = "172.15.0.0/24"
-acr_name                 = "neolixacr01"
-acr_resource_group       = "neolix-rg-neolix-test"
+nodepool_vm_size         = "Standard_D4s_v5"
+network_dns_service_ip   = "10.96.0.10"
+network_service_cidr     = "10.96.0.0/24"
+use_existing_acr         = true
+acr_name                 = "amllearning02"
+acr_resource_group       = "aml-learning-rg"
 address_space            = ["172.15.0.0/16"]
 username                 = "azureuser"
 ssh_public_key           = "~/.ssh/id_rsa.pub"
@@ -44,8 +45,33 @@ subnets = [
     name             = "privateendpoint-subnet"
     address_prefixes = ["172.15.6.0/24"]
     delegation       = ""
+  },
+  {
+    name             = "postgresql-subnet"
+    address_prefixes = ["172.15.7.0/27"]
+    delegation       = "Microsoft.DBforPostgreSQL/flexibleServers"
   }
 ]
+
+# Subscription and tenant default to the authenticated Azure context.
+# Database passwords are generated when omitted; inject private overrides if needed.
+components = {
+  mysql       = true
+  postgresql  = true
+  cosmosdb    = false
+  redis       = true
+  azure_cache = true
+  eventhub    = true
+  servicebus  = true
+  storage     = true
+  vm          = true
+}
+
+retain_cosmos_network = true
+# Reconfirm eligibility if the target tenant changes.
+azure_cache_eligibility_confirmed = true
+
+storage_account_name = "chaosuaenorthlabblob01"
 
 ## ingress controller
 #ingress_repository = "https://kubernetes.github.io/ingress-nginx"
@@ -88,21 +114,14 @@ eventhub_enable_private_endpoint = true
 
 
 ## MySQL Flexible Server
-mysql_server_name       = "neolix-mysql-1"
+mysql_server_name       = "chaos-mysql-1"
 mysql_admin_user        = "mysqladmin"
-mysql_admin_password    = "ChangeMe123!"
 mysql_version           = "8.0.21"
 mysql_database_name     = "appdb"
 mysql_sku_name          = "GP_Standard_D2ds_v4" # Changed from B_Standard_B2s to Standard_B2s (General Purpose)
 mysql_storage_size      = 128                   # GB
 mysql_zone              = "1"
 mysql_availability_mode = "ZoneRedundant" # High Availability supported
-
-# Network: we already have mysql-subnet in `subnets`
-#   name = "mysql-subnet"
-#   address_prefixes = ["172.15.5.0/24"]
-#   delegation = ""
-# The mysql module should use module.kube_network.subnet_ids["mysql-subnet"]
 
 ## Virtual Machines (Batch Configuration)
 vms = {
@@ -113,7 +132,11 @@ vms = {
     admin_username      = "azureuser"
     ssh_public_key_path = "~/.ssh/id_rsa.pub"
     os_type             = "linux"
+    image_offer         = "0001-com-ubuntu-server-jammy"
+    image_sku           = "22_04-lts-gen2"
+    image_version       = "22.04.202611110"
     enable_public_ip    = true
+    attach_nsg          = false
     nsg_rules = [
       {
         name                       = "AllowSSH"
@@ -150,7 +173,12 @@ vms = {
     admin_username      = "azureuser"
     ssh_public_key_path = "~/.ssh/id_rsa.pub"
     os_type             = "linux"
-    enable_public_ip    = true
+    image_offer         = "0001-com-ubuntu-server-jammy"
+    image_sku           = "22_04-lts-gen2"
+    image_version       = "22.04.202611110"
+    enable_public_ip    = false
+    attach_nsg          = false
+    bootstrap_rocketmq  = true
     nsg_rules = [
       {
         name                       = "AllowSSH"

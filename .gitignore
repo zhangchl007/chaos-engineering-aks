@@ -1,5 +1,7 @@
 # Local .terraform directories
 **/.terraform/*
+/local-state/
+/cosmos-account-import.tf
 
 # .tfstate files
 *.tfstate
@@ -27,3 +29,18 @@ override.tf.json
 
 # Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
 # example: *tfplan*
+
+*.tfplan
+*plan.json
+*.plan
+devplan
+prodplan
+*.tfstate.lock.info
+**/*kubeconfig*
+.env
+.env.*
+*.auto.tfvars
+*.private.tfvars
+*.private.tfvars.json
+*.tfvars
+!*.example.tfvars

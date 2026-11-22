@@ -20,5 +20,5 @@ output "eventhub_name" {
 
 output "private_endpoint_id" {
   description = "Private endpoint ID"
-  value       = azurerm_private_endpoint.eventhub.id
+  value       = one(azurerm_private_endpoint.eventhub[*].id)
 }

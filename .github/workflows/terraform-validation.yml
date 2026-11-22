@@ -1,0 +1,77 @@
+name: Terraform configuration validation
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+      - name: Formatting
+        run: terraform fmt -check -recursive
+      - name: Validate stage roots without backend or cloud operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          for scope in . stacks/bootstrap stacks/cluster stacks/chaos; do
+            terraform -chdir="$scope" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="$scope" validate
+          done
+      - name: Mock tests with the reviewed library provider baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform test
+          for scope in modules/*; do
+            test -f "$scope/main.tf" || continue
+            trap 'rm -f "$scope/ci_versions_override.tf"' EXIT
+            cat > "$scope/ci_versions_override.tf" <<'HCL'
+          terraform {
+            required_providers {
+              azurerm    = { source = "hashicorp/azurerm", version = "= 4.55.0" }
+              azapi      = { source = "Azure/azapi", version = "= 2.14.0" }
+              random     = { source = "hashicorp/random", version = "= 3.7.2" }
+              kubernetes = { source = "hashicorp/kubernetes", version = "= 2.38.0" }
+              helm       = { source = "hashicorp/helm", version = "= 2.17.0" }
+            }
+          }
+          HCL
+            terraform -chdir="$scope" init -backend=false -input=false
+            terraform -chdir="$scope" validate
+            terraform -chdir="$scope" test
+            rm "$scope/ci_versions_override.tf"
+            trap - EXIT
+          done
+          python3 -m unittest discover -s modules/chaos-validation/tests -p 'test_*.py'
+      - name: Install checksum-verified fixed-version TFLint
+        shell: bash
+        run: |
+          set -euo pipefail
+          release=https://github.com/terraform-linters/tflint/releases/download/v0.59.1
+          curl -fLsS --max-time 180 "$release/tflint_linux_amd64.zip" -o "$RUNNER_TEMP/tflint_linux_amd64.zip"
+          curl -fLsS --max-time 60 "$release/checksums.txt" -o "$RUNNER_TEMP/checksums.txt"
+          (cd "$RUNNER_TEMP" && grep 'tflint_linux_amd64.zip$' checksums.txt | sha256sum -c -)
+          unzip -q "$RUNNER_TEMP/tflint_linux_amd64.zip" -d "$RUNNER_TEMP/tflint-tool"
+          "$RUNNER_TEMP/tflint-tool/tflint" --recursive --minimum-failure-severity=error
+      - name: Offline fixed-version policy scan
+        env:
+          LOG_LEVEL: ERROR
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/policy-tools"
+          "$RUNNER_TEMP/policy-tools/bin/pip" install checkov==3.2.495
+          "$RUNNER_TEMP/policy-tools/bin/checkov" --directory . --framework terraform --skip-download --skip-results-upload --download-external-modules false --compact

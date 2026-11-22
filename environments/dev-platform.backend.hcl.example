@@ -1,0 +1,3 @@
+# Optional local backend override, relative to the repository root.
+# Preserve the existing state path when working with an existing environment.
+path = "local-state/dev/platform.tfstate"

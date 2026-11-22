@@ -13,16 +13,17 @@ resource "helm_release" "argocd" {
   namespace = kubernetes_namespace.argocd.metadata[0].name
 
   # Enable upgrade functionality
-  force_update    = true
   cleanup_on_fail = true
   atomic          = true
   timeout         = 900
   wait            = true
 
   values = [<<EOF
+configs:
+  params:
+    server.insecure: false
 server:
-  extraArgs:
-    - --insecure
+  extraArgs: []
   service:
     type: LoadBalancer
     annotations:
@@ -31,12 +32,9 @@ repoServer:
   env:
     - name: ARGOCD_GIT_ATTEMPTS_COUNT
       value: "5"
-    - name: ARGOCD_REPO_SERVER_PLAINTEXT
-      value: "true"
 dex:
   enabled: false
 EOF
   ]
 
-  depends_on = [kubernetes_namespace.argocd]
 }

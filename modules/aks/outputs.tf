@@ -1,31 +1,19 @@
-output "cluster_password" {
-  value     = azurerm_kubernetes_cluster.k8s.kube_config[0].password
-  sensitive = true
-}
-
-output "cluster_username" {
-  value     = azurerm_kubernetes_cluster.k8s.kube_config[0].username
-  sensitive = true
-}
-
-output "host" {
-  value     = azurerm_kubernetes_cluster.k8s.kube_config[0].host
-  sensitive = true
-}
-
-output "kube_config" {
-  value = azurerm_kubernetes_cluster.k8s.kube_config
-}
-
-output "kube_config_raw" {
-  value = azurerm_kubernetes_cluster.k8s.kube_config_raw
-}
-output "acr_login_server" {
-  description = "Azure Container Registry login server"
-  value       = local.acr_login_server
-}
-
 output "cluster_id" {
-  description = "The AKS cluster ID"
+  description = "AKS cluster resource ID."
   value       = azurerm_kubernetes_cluster.k8s.id
+}
+
+output "node_resource_group" {
+  description = "AKS-owned infrastructure resource group for approved VMSS discovery."
+  value       = azurerm_kubernetes_cluster.k8s.node_resource_group
+}
+
+output "oidc_issuer_url" {
+  description = "Workload identity issuer."
+  value       = azurerm_kubernetes_cluster.k8s.oidc_issuer_url
+}
+
+output "acr_login_server" {
+  description = "Private registry login server."
+  value       = local.acr_login_server
 }
