@@ -2,7 +2,7 @@
 
 **核对日期：2026-11-23。** 本文涵盖当前设计的全部 **70 个场景**，按服务分类，明确哪些可以使用 Chaos Studio，哪些需要其他方式完成。
 
-**依据说明：** 产品能力以本文各组附带的 **Microsoft Learn 官方链接**为依据；场景编号和“部分支持／待核验”是本项目的归类，不是微软官方认证。当前环境配置和执行结果来自项目记录，不能与官方产品支持范围混为一谈。
+**依据说明：** 产品能力以各组附带的 **Microsoft Learn 官方链接**和区域动作目录为依据；“部分支持／待核验”是本项目的归类。实际配置见[第四节实时复核](#workspace-configuration-audit)，业务结果另见测试报告，三者不能混为一谈。
 
 ## 一、如何看“是否支持”
 
@@ -242,9 +242,61 @@
 - **当前清单不自动扩展到旧版模型或其他产品。** 不把旧版 Redis、Managed Redis、Service Bus、Event Hubs 的动作和复制语义混用。
 
 <a id="05-原生能力优先本轮执行与暂缓标注"></a>
-## 四、当前实际完成情况
+## 四、Workspace 配置复核与实际完成情况
 
-以下是截至本次整理时的已有记录，不是本次重新执行的结果：
+<a id="workspace-configuration-audit"></a>
+
+**结论：70 项中，12 项已建立独立 Scenario 和 `approved-targets` 配置，共绑定 7 个不同的 Azure 资源；58 项未建立独立配置。** 这是现有非生产 Workspace 的实时 ARM 核对结果，不是本次重新运行故障的结果。Workspace 里的 target 是 Configuration 中的资源筛选，不需要 classic Target/Capability，也不需要另建一套 Portal 配置。另有 25 个推荐场景未绑定 Configuration，不计为已建立。
+
+### 4.1 已建立：12 项
+
+以下各项已核对云端 `approved-targets` 的单 Action、参数、目标 ID、筛选与排除，均与原 Terraform 私有输入一致。Portal 进入现有 Workspace → **Scenarios** 后，选择下表 Scenario 和原 `approved-targets`。
+
+| 编号 | Scenario | 实际绑定目标（脱敏） | 执行状态 |
+| --- | --- | --- | --- |
+| M-01 | `m01-mysql-ha-failover` | 同一台 MySQL Flexible Server | 历史已执行 |
+| M-02 | `m02-mysql-restart` | 同一台 MySQL Flexible Server | 历史已执行 |
+| P-01 | `p01-postgresql-planned-failover` | 同一台 PostgreSQL Flexible Server | 历史已执行 |
+| P-02 | `p02-postgresql-forced-failover` | 同一台 PostgreSQL Flexible Server | 未执行；强制切换与数据恢复需另行授权 |
+| R-01 | `r01-legacy-redis-primary-reboot` | 同一个旧版 Azure Cache for Redis，主节点 | 历史已执行；节点实际影响证据不足 |
+| R-02 | `r02-legacy-redis-secondary-reboot` | 同一个旧版 Azure Cache for Redis，副本 | 历史已执行；节点实际影响证据不足 |
+| B-01 | `b01-servicebus-send-disabled` | 同一个 Service Bus namespace 内的单一既有队列 | 历史已执行 |
+| B-02 | `b02-servicebus-receive-disabled` | 同一个 Service Bus namespace 内的单一既有队列 | 历史已执行 |
+| H-01 | `h01-eventhub-send-disabled` | 同一个 Event Hubs namespace 内的单一既有事件中心 | 历史已执行 |
+| H-02 | `h02-eventhub-disabled` | 同一个 Event Hubs namespace 内的单一既有事件中心 | 历史已执行 |
+| V-09 | `v09-private-vm-restart` | 单台既有测试 VM，不含恢复用 VM | 未执行；需核对 Broker、间接消费者及 guest 恢复 |
+| N-07 | `n07-single-user-node-shutdown` | 单一 User VMSS + 指定 zone，排除 System VMSS | 未执行；ARM 复核指定 zone 匹配 1 个实例（该用户池共 2 个），仍缺私网 workload、容量与恢复证据 |
+
+### 4.2 有原生动作但未建立：16 项
+
+| 编号 | 未建立原因 | 建立前须满足 |
+| --- | --- | --- |
+| V-03、V-04 | 区域有 VM CPU／内存动作；候选测试 VM 当前没有托管身份，代理出站、资源余量和 Broker 间接影响未核实。 | 在原资源管理流程补齐获批身份和最小权限，核验代理兼容、出站、容量、低强度参数及恢复方案。 |
+| K-01–K-05 | 现有 AKS 为 private，历史上扩展已安装，但 Workspace 当前没有 Pod Scenario 或 Configuration；没有经私网认证核实的获批 workload、namespace 和标签组合。微软将 private cluster 列为未验证配置，而非明确不支持。 | 从已批准的私网操作端核验扩展和工作负载；以确切 namespace 与标签交集限定 Pod。K-02/03 另核容器工具；K-04/05 另核 Linux amd64 网络组件与残留恢复，不开放公网 API。 |
+| N-01 | 区域有 VMSS shutdown；现有 N-07 仅为单实例用途。复核中 User pool 的两个实例分属不同 zone，现有配置不能作为另一个多节点／zone 影响场景的证明。 | 明确批准的 User VMSS、zone 与实际实例清单、剩余容量和恢复，不沿用单节点授权或纳入 System 池。 |
+| N-02、N-03 | 区域有 VMSS 压力动作；尚无证据证明当前方案只影响一个指定实例，而非整个规模集。仓库现有压力配置仅支持单独 VM，不支持 VMSS 实例级筛选。 | 先验证原生实例级选取方式和代理资格、容量及恢复，再配置；不得以整池压力替代。 |
+| A-02 | Managed Redis 有一个现有数据库，但未确认数据独占且可完全重建，也未取得不可撤销清库授权。 | 选定隔离可重建数据库，核对清库影响、恢复证据和专项授权。 |
+| A-04 | Managed Redis 当前无异地关联数据库可解除。 | 如纳入范围，需单独批准的异地测试拓扑、关联目标和重建恢复方案。 |
+| S-03 | 现有 Storage 是 `Standard_ZRS`，无辅助区域，不能做计划性区域切换。 | 使用获批准且满足计划性切换条件的异地冗余测试账户；不为测试直接修改当前账户。 |
+| B-03 | 区域有主题／订阅状态动作，但当前被绑定的 Service Bus namespace 中主题数为 **0**，没有可绑定的测试订阅。动作不会自动恢复原状态。 | 先明确专用测试 topic/subscription，并为两个变体分别确认目标权限、原状态和恢复步骤；不可复用队列动作。 |
+| L-01 | 区域有后端管理状态动作，但在当前 scope 中只查到 AKS 节点资源组的 Load Balancer，没有获批的独立测试 LB/后端。 | 选定独立测试 LB、后端池和地址；不操作 AKS 托管共享 LB。 |
+| D-02 | 当前 Cosmos DB 账户只有 **1 个区域**，且原测试范围未选此场景。 | 如纳入范围，需获批多区域测试账户、明确目标区域及读写恢复检查。 |
+
+### 4.3 不能按原场景直接建立原生配置：42 项
+
+| 类别 | 编号 | 缺口或替代方式 |
+| --- | --- | --- |
+| 非原生：主机／Pod | V-05、V-06、V-07、V-08、V-10、K-06、N-04、N-05 | 缺精确路径、卷、进程或渐进泄漏动作；须在隔离测试环境用主机／应用工具，Pod 整体故障不等价。 |
+| 非原生：数据恢复／异地 | M-03、P-03、S-02、S-04、B-05、H-05、H-06 | 用服务自身 PITR、软删除／版本和复制／切换能力。S-02 还缺可读辅助区域；只复制元数据不等于复制数据。 |
+| 非原生：缓存、客户端和时序 | R-03、R-04、A-03、S-01、B-04、H-04、C-02、C-03、C-05、D-01 | 需专用测试客户端及协议／应用控制；旧 Redis 全库清空须用获批隔离数据面的专项测试，不能借用 Managed Redis Action。 |
+| 非原生：路由探针 | L-03、G-03 | 需专用后端和可控探针异常；管理面摘流不等于探针异常。 |
+| 待核验：网络隔离或缺目标 | N-06、I-01、M-04、A-01、L-02、G-02、C-01、C-04 | 尚无满足单节点、单客户端、单依赖／域名或网格控制面边界的等价动作与恢复证据。MySQL 当前无独立只读副本；HA standby 不是只读副本。没有获批独立 LB／Gateway 后端或网格目标时不绑定共享资源。 |
+| 部分支持：依赖未建立 | H-03、G-01、V-02、E-03 | 部分底层故障能力存在，但缺已核实的消费者 Pod、获批 Gateway 后端或符合资格的 Broker 压力目标；还需应用／路由层时序和恢复验收。 |
+| 部分支持：可复用现有动作但未建立完整用例 | V-01、E-01、E-02 | V-01 可复用 V-09；E-01 可评估使用已绑定旧 Redis 重启动作；E-02 可复用 B-01。分别还需 Broker 持久性、缓存回源或发件箱／唯一业务效果验证，不能算独立 Scenario 已建立。 |
+
+### 4.4 既有运行记录
+
+以下运行历史已通过 ARM 核对；管理面影响及业务验收依据[原生测试报告](./chaos-studio-native-test-report.md)，本次未重跑：
 
 | 项目 | 实际情况 |
 | --- | --- |
@@ -262,7 +314,7 @@
 
 以上链接均为微软官方文档，本次已查阅。判断方式是：**动作目录确认原生能力，扩展文档确认 Pod 能力，服务文档确认备份及异地恢复能力；项目记录说明当前是否具备条件、是否已经执行。**
 
-本次未重新查询目标区域完整动作参数、实际订阅资格或云端配置。官方有能力不代表当前目标必然适用；官方目录未列出也不写成所有产品版本永久不支持。
+本次通过 ARM 读取了现有 Workspace、Scenario、Configuration、运行历史、UK South 区域动作目录和指定 scope 的相关目标元数据；未执行新的原生 Validate 或故障，未改动 Azure 资源、RBAC 或 Terraform state，也未重新验证 AKS 私网内 workload、应用数据面和恢复资格。官方有能力不代表当前目标必然适用；官方目录未列出也不写成所有产品版本永久不支持。
 
 [cs-catalog]: https://learn.microsoft.com/en-us/azure/chaos-studio/chaos-studio-workspaces-supported-resources
 [cs-compute]: https://learn.microsoft.com/en-us/azure/chaos-studio/chaos-studio-workspaces-supported-resources#compute
