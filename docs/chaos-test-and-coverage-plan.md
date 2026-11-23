@@ -1,826 +1,680 @@
-# Azure Chaos Studio 统一测试用例与覆盖规范
+# Azure Chaos Studio 统一测试用例与覆盖规范 / Unified Test Cases and Coverage Standard
 
-**Reviewed:** 2026-11-23.  
-**Status:** 唯一测试用例清单；原生运行记录已生成，完整 infra/business 尚未验收。文档整理不授权部署、流量或故障执行。  
-**Scope:** 指定非生产资源组内的 VM、AKS、MySQL、PostgreSQL、两种 Redis、Blob Storage、Service Bus、Event Hubs；AKS 托管节点资源组是唯一经规划确认的例外。Cosmos DB、RocketMQ 业务验证本轮不选；LB/Application Gateway 留作未来补充。
+**复核日期 / Reviewed：** 2026-11-23。
 
-本文合并原 PaaS/Terraform 清单及用户提供的 4.1–4.8 场景，保留原 43 个用例编号，补充 27 个不同故障边界/验收目标的用例，共 **70 个规范用例**。用户场景去重后为 39 项，与规范编号的映射见 §0.4；一个场景可包含多个独立变体，不等于一次组合故障。相同机制但不同验收层级不重复执行或冒充另一个用例通过。
+**阅读规则：** 中文为场景、范围和结果的主线；英文紧随对应中文，同一行或同一段表达同一要求。产品名、Case ID、Action ID、API 参数和状态枚举保留原文，不另行翻译或改写。英文原有的补充场景全部保留，并补齐中文。
+**Reading rule:** Chinese leads the scenarios, scope and results; the corresponding English follows in the same row or paragraph. Product names, Case IDs, Action IDs, API parameters and status enums remain unchanged. All additional scenarios from the former English catalog are retained with Chinese counterparts.
 
-[实施计划](./chaos-studio-implementation-plan.md)仅跟踪工程批次，[部署与测试 runbook](./terraform-deployment-runbook.md#chaos-test-operations)统一保存全部操作步骤、安装、停止恢复和报告流程；用例定义、范围与验收以本文为准，不再创建另一份测试用例清单。测试代码、配置样例与私有运行输入均统一放置在当前项目，位置见 runbook §8.1。
+**状态：** 本文是唯一用例清单，不是运行授权。共 **70 个规范用例**：保留原 43 个编号，补充 27 个独立故障边界/验收目标；用户提供的 **39 个中文场景**全部映射。实际执行了其中 9 个用例，两轮合计 18 个成功原生运行；完整基础设施与业务韧性尚未验收。
+**Status:** This is the single case catalog, not execution authorization. It contains **70 cases**: 43 original IDs and 27 additional distinct fault boundaries or acceptance objectives. All **39 supplied Chinese scenarios** are mapped. Nine distinct cases have been executed, totaling 18 successful native runs across two rounds; full infrastructure and business resilience remain unverified.
 
-**Next step:** 按 §0.5 的原生能力标注，由用户在 Chaos Studio 中先执行已确认能力的单 Action 测试。不再为本轮原生执行搭建自定义 canary、observer Job、SDK 流量或业务账本；暂不具备能力的场景明确标注并暂缓，不用模拟冒充原生测试。实际订单/库存/cache-aside 等业务验收保留给后续阶段。
+**范围：** 指定非生产资源组内的 VM、AKS、MySQL、PostgreSQL、两种 Redis、Blob Storage、Service Bus、Event Hubs；AKS 托管节点资源组是唯一已规划例外。Cosmos DB、RocketMQ 业务本轮不选；Load Balancer / Application Gateway 为未来补充。
+**Scope:** VM, AKS, MySQL, PostgreSQL, both Redis products, Blob Storage, Service Bus and Event Hubs in the designated non-production resource group. The AKS-managed node resource group is the sole planned exception. Cosmos DB and RocketMQ business validation are unselected; Load Balancer / Application Gateway are future coverage.
 
-### Navigation
+[实施计划 / Implementation plan](./chaos-studio-implementation-plan.md)只跟踪工程批次；[操作手册 / Operations runbook](./terraform-deployment-runbook.md#chaos-test-operations)保存部署、运行、停止恢复和报告步骤；[原生测试报告 / Native test report](./chaos-studio-native-test-report.md)保存实际执行证据。用例定义与验收以本文为准，不新增第二份清单。
+The implementation plan tracks engineering batches only; the runbook owns deployment, execution, stopping, restoration and reporting procedures; the native report records actual execution evidence. This document remains authoritative for case definitions and acceptance.
 
-- [统一范围、用例模板与用户场景映射](#0-unified-case-standard-and-current-campaign)
-- [Boundaries](#1-recommendation-and-boundaries)
-- [Current coverage and ownership](#2-current-coverage-evidence-and-ownership)
-- [Workloads and measurable acceptance](#3-workload-and-measurement-design)
-- [Common client-path cases](#4-common-client-path-cases)
-- [Service and compute cases](#5-service-specific-test-cases)
-- [Business-flow extension](#6-end-to-end-extension-after-individual-services-pass)
-- [Authorization, stop and recovery](#7-safety-permissions-stopping-and-restoration)
-- [Implementation tasks and waves](#8-dependency-ordered-delivery-and-execution-waves)
-- [Evidence and verdicts](#9-evidence-and-result-classification)
-- [Decisions and completion checklist](#10-decisions-and-completion-checklist)
+## 导航 / Navigation
 
-## 0. Unified case standard and current campaign
+- [0. 当前范围、中文场景映射与实际结果 / Scope, Chinese scenario mapping and actual results](#0-unified-case-standard-and-current-campaign)
+- [1. 故障机制与边界 / Mechanisms and boundaries](#1-recommendation-and-boundaries)
+- [2. 现有覆盖与资源归属 / Existing coverage and ownership](#2-current-coverage-evidence-and-ownership)
+- [3. 分阶段验收与度量 / Phase-specific acceptance and measurement](#3-workload-and-measurement-design)
+- [4. 通用客户端补充场景 / Common client-path additions](#4-common-client-path-cases)
+- [5. 中文主线及保留的服务场景 / Chinese-led and retained service cases](#5-service-specific-test-cases)
+- [6. 后续业务组合验证 / Later business-flow validation](#6-end-to-end-extension-after-individual-services-pass)
+- [7. 授权、执行、停止与恢复 / Authorization, execution, stopping and restoration](#7-safety-permissions-stopping-and-restoration)
+- [8. 实施任务与执行批次 / Implementation tasks and execution waves](#8-dependency-ordered-delivery-and-execution-waves)
+- [9. 证据与结果 / Evidence and verdicts](#9-evidence-and-result-classification)
+- [10. 完成检查 / Completion checklist](#10-decisions-and-completion-checklist)
 
-### 0.1 本轮范围与状态
+<a id="0-unified-case-standard-and-current-campaign"></a>
+## 0. 当前统一范围与执行状态 / Current Scope and Execution Status
 
-| 类别 | 本轮选择与约束 |
-| --- | --- |
-| VM | 可规划使用目前承载 RocketMQ 的 VM；仅做 V-03–V-10 基础设施验证。执行前确认其所有服务/消费者、允许中断、备份与恢复；不默认停止 broker、删除 broker 数据或杀 broker 进程。jumpserver/恢复 VM 永久排除。 |
-| AKS | K-01–K-06 与 N-02–N-07 为候选；精确 namespace AND labels、测试 User pool/实际实例。System pool、恢复/验证组件排除；托管节点组通过 AKS 属性发现，不导入 VMSS、不接管节点生命周期。N-01 整个 zone 范围不是单实例授权。 |
-| PaaS | C-01–C-05 按产品/协议拆变体；M-01/M-02/M-04、P-01/P-02、R-01–R-04、A-01/A-02、S-01–S-04、B-01–B-04、H-01–H-06 为资格待核候选，选中不等于可执行。 |
-| 独立专项 | M-03/P-03 PITR、A-03/A-04 geo/topology、B-05 regional、N-01 zone-loss 保留；范围、资源生命周期或数据风险扩大时另审，不默认进入本轮。 |
-| 不选/后续 | D-01/D-02 Cosmos 本轮不选；V-01/V-02 RocketMQ 业务验收不选；E-01–E-03 和各服务的业务 SLO 后续接入；L-01–L-03/G-01–G-03 无本轮目标，Future。I-01 为原生机制未映射、mesh 目标待核验，不据此认定平台不支持。 |
-| 实际资源边界 | 真实资源组名、订阅/tenant、端点、VM/VMSS/node IDs、实体名只保存在私有 manifest；公开示例使用占位符。本轮同资源组目标及唯一 AKS 节点组例外须每次核对。 |
+<a id="01-本轮范围与状态"></a>
+### 0.1 本轮范围与状态 / Campaign scope and status
 
-**选择、能力、准备、授权与运行结果分开记录：** Candidate 表示待资格核实，Future 表示未来补充，Unselected 表示本轮不选。未配置、缺目标、缺前置、缺证据、待授权不是同一种 Blocked；按下表记录准备状态。只有实际运行后才可给出 Passed/Failed/Inconclusive。目前本清单不宣称任何故障已通过。
-
-| 准备状态 | 判定与后续动作 |
-| --- | --- |
-| PendingConfiguration / 待配置 | 已有相应原生能力，尚未创建明确目标配置；准备配置，不增加业务 SDK/自定义应用门槛。 |
-| AwaitingTarget / 待选择目标 | 尚未选定符合 namespace/labels、实体或实例边界的已有目标；不把历史空 namespace 当当前永久阻塞。 |
-| PendingPrerequisite / 待补前置 | 明确可补的身份、权限、安装或恢复前置尚未完成；记录缺项及 owning state，不默认扩大权限或改变共享资源。 |
-| PendingVerification / 待核验 | 支持、连通、实际匹配、容量或恢复证据未核验；缺证据不等于证实不支持，也不等于就绪。 |
-| PendingDesign / 待确认机制 | 当前精确故障语义或单实例作用边界尚未映射；标明“当前未确认等价原生 Action”，不使用不同故障冒充。 |
-| PendingValidation / 待原生验证 | 配置已经部署，尚未通过原生 Validate 或存在需定位的 validation errors。 |
-| Validated / 原生验证通过 | 当前配置原生 Validate 为 `Succeeded` 且解析到明确获批资源；仍须运行前重查动态目标、健康、影响、停止恢复与授权。 |
-| AwaitingAuthorization / 待执行授权 | 机制可用，但 destructive/forced/扩大范围或恢复生命周期需要独立授权；配置存在不是执行授权。 |
-| Blocked / 已证实阻塞 | 当前实际 SKU、拓扑或已复现失败与必要能力不兼容，并附具体证据；只阻塞该 variant，不阻塞其它可执行项。 |
-
-原生能力另记“已确认 / 当前未映射 / 当前目标不兼容”，授权另记范围与恢复许可；可同时有多个准备缺项。未运行记 `execution=NotRun`，不填 Passed，也不因普通待办将整个 campaign 标为 Blocked。已有完整 infra/business runner 的前置拒绝逻辑不变；本表不是放宽其安全门槛或修改其结果枚举。
-
-前次私有只读规划记录：MySQL 为 ZoneRedundant/Healthy，PostgreSQL 为 SameZone/Healthy；Storage 为 ZRS，不符合 regional planned failover 的 geo 前置；Service Bus Premium、Event Hubs Standard；AKS System/User pool 各两节点、声明三 zones，不证明实际放置。前次 authenticated readiness 为 4/4 nodes、6/6 Chaos 控制 pods Ready，target workloads 为空、verification namespace 不存在，临时身份/工具已清理。这些均是前次证据，运行前重验；HA、Ready、SKU 和静态测试不是故障验收。
-
-### 0.2 每个用例的标准记录
-
-§4–§6 的完整 infra/business 验收继承本模板、§0.3 的技术验证、§7 的停止恢复及 §9 的证据契约。当前先按 §0.5 执行原生 Action，完整技术/业务验收不作为该阶段的额外前置；原生运行结果与完整用例结论分开记录。
-
-| 必填项 | 规范 |
-| --- | --- |
-| Case ID / variant / phase | 稳定编号；variant 明确产品、协议、planned/forced、topic/subscription 等；phase 为 `infra` 或 `business`。每个 variant 单独运行、单独结论。 |
-| 目的与假设 | 预期受损对象、技术/业务行为、最大影响与恢复目标；可观测、可判定。 |
-| 前置条件 | 当前 region/SKU/HA/agent/extension、健康/保护、身份/权限、目标/间接消费者、独立控制、容量、预算与停止恢复授权；缺项按 §0.1 标记待办，不执行。已证实技术不兼容才记 Blocked。 |
-| 故障机制 | Workspace service-direct、AKS extension、agent、client-path simulation、service-native drill；完整 Action/API/version/schema。无支持不得猜 ID 或自动回退 classic/Chaos Mesh。 |
-| 参数与范围 | 明确资源/实例/实体/namespace AND labels、实际匹配数、强度/持续时间、截止时间、排除项；禁止空/wildcard。动作 duration 不等于真实 outage/RTO。 |
-| 基线与步骤 | §7.1 标准执行流程，记录无故障基线、真实注入、实际影响、告警、停止和恢复。 |
-| 停止与恢复 | 每条阈值对应真实 observer/检测预算/operator；区分 Cancelable/Continuous 与不可逆 Discrete。记录原状态，只清理本次 owned 对象。 |
-| 验收与报告 | 按 phase 检查真实影响、containment、技术完整性/业务不变量与逐窗口恢复；记录证据/hash/限制及中文结果，缺证据不写 Passed。 |
-
-### 0.3 Infra-first 技术验证与 HA 前置
-
-完整 `phase=infra` 的技术验收采用下表；当前原生先行阶段采用 §0.5，不以新建技术探针/SDK 流量/账本阻塞原生执行。§3 和原用例中涉及订单、库存、cache-aside/outbox、业务 SLO 的要求保留给 `phase=business`。报告必须区分原生 Action 结果、infra 验收与 business 验收：原生 `Succeeded` 不表示这两类完整验收已通过。技术探针/SDK traffic 也不能称为真实应用流量。
-
-| 对象 | 基线、故障期间与恢复后的必要技术证据 |
-| --- | --- |
-| VM | Azure/guest health、CPU/memory/disk/IO、指定测试进程生命周期、真实目的地址连接；实际达到注入目标，非目标/恢复通道健康，压力/文件/网络规则无残留。VM Running 不能替代 guest readiness。 |
-| AKS | 原/新 Pod UID、node/instance 映射、Ready/events/lease、requests/limits、真实副本/zone 放置、剩余容量、存储约束；验证受损与恢复，不用“新 Pod 存在”替代服务/协议恢复。 |
-| MySQL / PostgreSQL | 有限唯一 ID 的测试事务写/读、attempt/ack/unknown 账本、已确认数据、连接恢复、HA 健康/角色；未知 commit 先查后判，不盲重发。SameZone HA 不证明 zone-loss。 |
-| 两种 Redis | 独立测试 keys 的读写/版本、连接/拓扑、实际副本/HA；flush 仅完全独占可重建数据库并确认所有 geo links。不得承诺 cache writes 的通用零丢失。 |
-| Blob | operation ID、hash、length、ETag/version、ack/unknown、实际保护/恢复；测试 prefix 与 backend/evidence/backup account 分离。 |
-| Service Bus | 专用 queue/topic/subscription，有限 publish/PeekLock/settlement、producer ack/unknown、重复尝试与唯一技术 effect、outstanding/DLQ；恢复原实体状态，不称技术 effect 为业务交易验收。 |
-| Event Hubs | 专用 hub/group、partition/sequence/offset、ack/unknown、独立 durable checkpoint、lag/retention 与 replay；没有全局顺序或平台 exactly-once/DLQ 承诺。 |
-
-HA/控制资源配置是独立 Terraform 前置变更：在原 owning state 审查产品 HA/geo 差异、SKU/region/保护、成本及 delete/replace/migration 风险，不全量重建、不改 backend、不把同一资源写入第二 state。ZRS 不是 GRS/GZRS；Geo-DR 不是 Geo-Replication；HA standby 不是独立控制依赖。
-
-Client-only 故障可共享**没有被故障操作**的服务，前提是实测 control path 不受影响；service/account/namespace 级故障须不同独立依赖和恢复路径。同一故障服务上的另一个 queue/container 或 standby 不能证明实例级 containment。现有 reference runner 的更严格 control 配置门槛仍须满足，本文不会自动放宽代码。
-
-技术参数是待确认建议，不是服务 SLA：初始网络 +100 ms/1% loss、60 秒；Pod 保留当前 25%/60 秒/CPU 1–2 cores/memory 1–128 MB/loss 1–10%/latency 1–500 ms guards；实际百分比取整先核对。VM/node CPU 从 50% 逐级，95–100%、memory 90%、disk exhaustion 仅专用可恢复目标后续单独审查，不照搬全 namespace、30% loss 或长时默认值。
-
-基线与恢复建议每条技术路径每秒至少一个有效观测，记录样本数；恢复十个连续一分钟窗口达到约定 health/技术读写标准，control 每窗口无失败。observer stale 超过 15 秒、未授权目标/数据异常、System pool/恢复路径受损或超过实际匹配/成本预算即停止。压力目标本身的预期高 CPU 不套用非目标 80% 警戒。不同服务的 recovery budget、数据/消息量、TTL/retention、bytes/partition lag 上限在执行前确认；未确认不启动。
-
-### 0.4 用户 39 个场景与规范编号映射
-
-每一用户场景恰有一行映射；带产品后缀的是 C-family 的独立 variant。表中映射不代表已支持、已实施或已运行；资格以对应定义为准。
-
-| 原场景 | 名称 | 规范编号 |
+| 对象 / Area | 中文范围与限制 | Corresponding English scope and limits |
 | --- | --- | --- |
-| 4.1.1 | VM CPU 满载 | V-03 |
-| 4.1.2 | VM memory 满载 | V-04 |
-| 4.1.3 | VM 网络延时 | V-05 |
-| 4.1.4 | VM 网络丢包 | V-06 |
-| 4.1.5 | VM 磁盘满载 | V-07 |
-| 4.1.6 | VM 磁盘 IO 压力 | V-08 |
-| 4.1.7 | VM 重启 | V-09；不替代 V-01 broker 业务验收 |
-| 4.1.8 | VM 应用进程终止 | V-10 |
-| 4.2.1 | AKS Pod 意外终止 | K-01 |
-| 4.2.2 | AKS Pod CPU 满载 | K-02 |
-| 4.2.3 | AKS Pod 内存泄漏 | K-03 资源压力 / K-06 逐步增长模拟，分别验收 |
-| 4.2.4 | AKS Pod 网络丢包 | K-05 |
-| 4.2.5 | AKS Pod 网络延时 | K-04 |
-| 4.2.6 | AKS 节点 CPU 满载 | N-02 |
-| 4.2.7 | AKS 节点内存满载 | N-03 |
-| 4.2.8 | AKS 节点网络丢包 | N-04 |
-| 4.2.9 | AKS 节点网络延时 | N-05 |
-| 4.2.10 | ASM 控制层/数据层断连 | I-01 |
-| 4.2.11 | AKS API Server/节点断连 | N-06 |
-| 4.3.1 | MySQL HA 故障转移 | M-01 |
-| 4.3.2 | MySQL 重启 | M-02 |
-| 4.3.3 | MySQL 网络中断 | C-01.mysql |
-| 4.3.4 | MySQL read replica 不可用 | M-04 |
-| 4.4.1 | Storage 网络不可达 | C-01.blob / C-04.blob，分别连接/DNS模拟 |
-| 4.4.2 | Blob 误删与恢复 | S-04 |
-| 4.4.3 | Storage 区域故障转移 | S-03，planned，不是实际 region outage |
-| 4.5.1 | Legacy Redis 网络不可达 | C-01.legacy-redis / C-04.legacy-redis |
-| 4.5.2 | Legacy Redis primary reboot/倒换 | R-01 |
-| 4.5.3 | Legacy Redis replica reboot | R-02 |
-| 4.5.4 | Legacy Redis 全数据库 flush | R-04；不替代 R-03 有限 key invalidate |
-| 4.6.1 | Event Hubs 网络不可达 | C-01.event-hubs / C-04.event-hubs；不替代 H-01/H-02 entity state |
-| 4.6.2 | Event Hubs 消费积压 | H-04 |
-| 4.6.3 | Event Hubs 跨区域倒换 | H-05 metadata Geo-DR / H-06 data Geo-Replication，分别验收 |
-| 4.7.1 | LB 单 backend 故障 | L-01，Future |
-| 4.7.2 | LB backend 网络中断 | L-02，Future |
-| 4.7.3 | LB backend probe 异常 | L-03，Future |
-| 4.8.1 | Application Gateway 单 backend 故障 | G-01，Future |
-| 4.8.2 | Application Gateway backend 网络中断 | G-02，Future |
-| 4.8.3 | Application Gateway backend probe 异常 | G-03，Future |
+| VM | V-03–V-10 为基础设施候选，可规划复用 RocketMQ VM；先核对所有服务、消费者、中断许可、备份及恢复。jumpserver/恢复 VM 永久排除；不默认停止或删除 broker。 | V-03–V-10 are infrastructure candidates; the RocketMQ VM may be reused only after checking every service, consumer, interruption approval, backup and recovery. Jump/recovery VMs are excluded; broker stopping/deletion is not implicit. |
+| AKS | K-01–K-06、N-02–N-07 为候选。精确 namespace AND labels、User pool/实例；排除 System pool、控制与恢复组件。N-01 整个 zone 范围另审。 | K-01–K-06 and N-02–N-07 are candidates with exact namespace AND labels and User-pool/instance targeting. Exclude System, control and recovery components. N-01 zone-wide scope requires separate review. |
+| PaaS | C-family 按产品/协议拆变体；MySQL、PostgreSQL、两种 Redis、Blob、Service Bus、Event Hubs 按 §0.5 核对资格。选中不等于可执行。 | Split C-family variants by product/protocol; qualify MySQL, PostgreSQL, both Redis products, Blob, Service Bus and Event Hubs under §0.5. Selection is not readiness. |
+| 独立专项 / Separate drills | PITR、geo/topology、区域切换、zone-loss 保留，但扩大目标、数据风险或资源生命周期时另行授权。 | Retain PITR, geo/topology, regional promotion and zone-loss drills; expanded targets, data risk or lifecycle changes require separate authorization. |
+| 后续/未选 / Later/unselected | D-01/D-02、V-01/V-02 本轮不选；E-01–E-03 与全部业务 SLO 后续验收；L/G 共六项为 Future。I-01 机制/mesh 目标待核验。 | D-01/D-02 and V-01/V-02 are unselected; E-01–E-03 and business SLOs are deferred; all six L/G cases are Future. I-01 mechanism/mesh targets await verification. |
+| 私有边界 / Private boundary | 真实订阅、tenant、资源组、端点、VM/VMSS/node IDs、消息实体名只保存私有；每次重查资源组及唯一节点组例外。 | Keep real subscription, tenant, resource group, endpoints, VM/VMSS/node IDs and entity names private; recheck the resource-group boundary and sole node-group exception before every run. |
 
-PostgreSQL、Managed Redis、Service Bus 原用例完整保留；另补 N-07 单测试节点不可用。**禁止旧步骤照搬：** 不删共享 Private DNS A record、不改共享 NSG/SAS Listen、不启用 Redis access keys、不全盘填满、不按名字批量 kill、不默认安装 Chaos Mesh。无等价原生 Action 的模拟/native drill 必须显式分类，不声称 Azure 服务真实 outage。
+**准备、能力、授权、执行与验收分开记录。** `Candidate` 为待资格确认，`Future` 为未来范围，`Unselected` 为本轮不选，`Deferred` 为后续阶段。未运行记 `execution=NotRun`；不能将待办、未选或原生配置成功写成 Passed。
+**Record preparation, capability, authorization, execution and acceptance separately.** `Candidate` awaits qualification, `Future` is future scope, `Unselected` is outside this campaign, and `Deferred` belongs to a later phase. Unexecuted cases use `execution=NotRun`; pending work, unselected cases and configuration success are not Passed.
 
-### 0.5 原生能力优先：本轮执行与暂缓标注
-
-**最新执行分工：依据用户本次“先用原生能力测试并生成报告”的要求，助手执行通过实时核验的既有单目标 PaaS 配置，并收集原生运行/管理面恢复证据。** 本轮按 M-01/M-02/P-01/R-01/R-02/B-01/B-02/H-01/H-02 分别核验、串行执行；Action duration 为1分钟，不等于真实中断时长。每次要求目标/参数/排除一致、最新 Validate 成功、无其它运行、健康与恢复可核验。目标越界、15分钟运行超时或10分钟恢复超时即停止；可取消动作先取消，再仅恢复本次消息实体到原 Active 状态，不盲重发 Execute。P-02 forced、VM/节点中断、flush/unlink 不随普通测试请求自动执行。保持 private AKS，不新建自定义应用/observer、不安装 Chaos Mesh、不补 guest 模拟、不通过 Terraform 启动故障。此前“用户自行 Execute”和“未启动故障”是准备阶段的历史记录，不能覆盖本次实际运行证据。
-
-**最新实际结果：** 2026-11-23 已执行上述9项原生测试，9个 run / Action 均 Succeeded，7项管理面状态变化/恢复已观察；Redis 两项缺独立节点影响证据，影响结论为 Inconclusive。五个目标最终 Resource Health Available，数据库 Ready / HA Healthy、消息实体 Active，无活动运行，private AKS 保持不变。MySQL 查询超时断档与 PostgreSQL 首次收尾 Resource Health Unavailable 后恢复均如实保留，没有重复 Execute。完整 infra/business 未验证；详见[原生测试报告](./chaos-studio-native-test-report.md)。下方是能力/准备记录，不是把70项全部判 Passed。
-
-2026-11-23 初次核对：Workspace provisioning 为 `Succeeded`，有 **25 个推荐 Scenario**，但资源发现为 **0**，检查的 MySQL 推荐模板运行 Configuration 为 **0**。Reader grant 与 scope 已存在，缺少显式原生资源发现；不是缺少 SDK 或 private AKS 需要开放公网。
-
-**首批已实施（历史基线）：** 对获批资源组调用原生 `discover` 后，发现 **57 个资源**，包括 private AKS 和所需 PaaS。使用原有 Chaos state 新增 **10 个单 Action Scenarios + 10 个明确单目标 Configurations**，绑定 MySQL、PostgreSQL、Legacy Redis、Service Bus、Event Hubs 及私有 RocketMQ VM 六个已有资源；新增六个 target-only custom roles 及其 assignments。两批各16 create，已有资源 update/delete/replace 为 **0**，没有启动故障。57 个发现资源不等于57个授权故障目标；每个配置只允许一个明确实例/namespace，消息实体进一步限定为已有的一个明确 queue/hub。jumpserver 不在任何配置目标中。
-
-自动推荐库仍保留。MySQL 推荐模板包含 Azure Load Testing，部分其它模板同时包含 VMSS/数据库/runbook 等多个 Actions，不直接整套执行；使用独立创建的单故障配置。名称为 `m01-mysql-ha-failover`、`m02-mysql-restart`、`p01-postgresql-planned-failover`、`r01-legacy-redis-primary-reboot`、`r02-legacy-redis-secondary-reboot`、`b01-servicebus-send-disabled`、`b02-servicebus-receive-disabled`、`h01-eventhub-send-disabled`、`h02-eventhub-disabled`、`v09-private-vm-restart`，各 Configuration 名称为 `approved-targets`。**10/10 原生 validation 已 `Succeeded`，且各实际解析到唯一指定目标。** 目标标识、完整参数、授权及 validation 证据保留私有。
-
-**本轮修复错误阻塞并补齐配置：** ARM 实例级核验确认 User pool 两个运行中实例分别处于 zone 2、3，System pool 另有两个运行中实例。新增 `n07-single-user-node-shutdown`，只选明确 User VMSS、其实际 region 和当前恰有一个实例的 zone 2；持续1分钟，`GracefulShutdown=true`，全部配置显式排除 System VMSS。只追加由 AKS `nodeResourceGroup` 属性发现的既定节点组例外及该 User VMSS 的 target-only 权限，不导入/修改节点生命周期，不需要访问 private Kubernetes API。单节点仍损失当前 User pool 一半容量，运行前必须重查匹配数、实际 workload 放置和剩余容量，autoscaler 后不得沿用旧快照。
-
-同时新增 `p02-postgresql-forced-failover`，复用已绑定服务器与已有 target-only 权限，模式为 `ForcedFailover`；执行与恢复风险另审。现有十项原生 Action/目标/参数不变。Saved plan 共 **7 create、11 metadata update、0 delete/replace**：4个 Scenario/Configuration、1个 User VMSS custom role/assignment、1个节点组 Reader assignment；更新仅为 Workspace discovery scope 和十个现有配置的 System VMSS 排除。刷新发现为 **69 个资源**，不是69个授权故障目标；当前共12项配置、7个明确目标资源。**12/12 原生 validation 均 `Succeeded`，各解析到唯一指定目标资源；相同完整输入 replan exit code 为0。** N-07 首次权限求值需等待新 Reader 传播，核对实际 assignment/principal/scope 后有限重验通过，没有扩大权限或调用权限自动修复。未启动故障。
-
-另核对 [agent-based requirements](https://learn.microsoft.com/en-us/azure/chaos-studio/chaos-studio-scenarios#agent-based-scenario-requirements)：原生 VM CPU/内存压力会在运行时**自动安装 agent extension，结束后保留**，不需要先手工安装 classic agent。实际 VM 为受支持 Ubuntu 22.04，但当前没有 managed identity，且 public outbound 尚未核验；V-03/V-04 是可补前置/待核验，不是因为未预装 agent 而永久 Blocked。没有 inbound public IP 不证明 public outbound 不可用；也不能据此认定限制为仅私网的 agent 场景受支持。身份须由原 owning state 补齐，不能借用 Workspace identity 替代 VM identity，也不为测试开放私有网络。
-
-下表覆盖全部 **70 个 Case ID**，能力与本轮是否就绪分开标注。依据为当前 Workspace 区域的完整 Action catalog、已安装推荐 Scenarios 和 [AKS extension 官方能力][aks-extension]；“未确认”只指当前 Workspaces/资源类型/故障语义，**不声称其他区域、classic 或其他产品永久不支持**。
-
-| Case ID | Chaos Studio 原生能力 | 本轮标注 / 原因 |
+| 准备状态 / Preparation status | 中文判定 | Corresponding English meaning |
 | --- | --- | --- |
-| M-01, M-02 | 有：MySQL HA failover、restart。 | **两项均已配置并绑定明确单服务器，原生 validation 均 `Succeeded`**。当前 HA 为 ZoneRedundant；两种故障分别运行，不把配置成功当故障通过。 |
-| P-01, P-02 | 有：PostgreSQL planned/forced HA failover。 | **两项均为 Validated，P-02 执行仍为 AwaitingAuthorization**。复用已有单服务器/权限；当前 SameZone HA 不证明 zone-loss，forced 的影响/恢复仍需独立核对。 |
-| R-01, R-02 | 有：Legacy Redis primary/secondary reboot。 | **两项均已配置并绑定明确单实例，原生 validation 均 `Succeeded`**。当前 Standard，单次一个角色；不是 Managed Redis reboot，不选 AllNodes。 |
-| B-01, B-02, B-03 | 有：Service Bus queue/topic/subscription state。 | **B-01/B-02 已绑定一个明确已有 queue，原生 validation 均 `Succeeded`；B-03 暂未配置，需独立 topic/subscription 与 Discrete 恢复/配置 opt-in**。不得把 queue 结果替代 topic/subscription。 |
-| H-01, H-02 | 有：Event Hub entity state。 | **已绑定一个明确已有 hub，原生 validation 均 `Succeeded`**；分别 `SendDisabled`/`Disabled`，不是区域故障或 queue ReceiveDisabled。 |
-| V-09 | 有：单 VM restart。 | **已绑定已批准私有 RocketMQ VM，原生 validation `Succeeded`**；jumpserver 排除。运行前仍核对所有间接消费者的中断/恢复；重启不能取消/撤销，不代表 broker 业务验收。 |
-| V-03, V-04 | 有：VM CPU/physical memory pressure；agent 由原生运行自动安装并保留。 | **PendingPrerequisite / PendingVerification**：Ubuntu 22.04 合格；VM managed identity 缺失，public outbound、实际 headroom 与恢复待核验。不是“先手工装 agent”。保留默认关闭/单 VM/初始≤50% guards，不直接满载，不开放私有网络。 |
-| K-01, K-02, K-03, K-04, K-05 | 有：AKS extension 的 Pod delete、CPU、memory、latency、loss。 | **AwaitingTarget / PendingVerification**：前次专用 namespace 无 workload Pod，仅为历史证据；需从私网操作端选择当前已有获授权 namespace AND labels 并核验匹配。extension 0.1.12 已安装；private AKS 官方未验证，不是声明不支持。只短时验证，不新建自定义应用。 |
-| N-01 | 有：VMSS shutdown；不是完整区域失效。 | **PendingConfiguration / AwaitingAuthorization**：实际 zone 已核验，但本项扩大到整个获批 zone 范围；不能借 N-07 单节点授权执行。容量/workload 放置仍须运行前重查。 |
-| N-07 | 有：VMSS shutdown，通过实际单实例 zone 限定。 | **Validated**：一个明确 User VMSS、region、zone 2 当前恰有一个 running 实例；System VMSS 明确排除。运行前重查恰好一个实例及剩余一节点容量，不随机删实例，不把配置资源数当实例数。 |
-| N-02, N-03 | catalog 有 VMSS CPU/memory pressure。 | **PendingDesign / PendingVerification**：当前模块只实现单 VM 压力，VMSS agent 的精确实例作用边界、身份/出站与 headroom 待确认；不压整池，不用 Pod hog 替代，不因缺实现称平台不支持。 |
-| S-03 | 有：Storage planned account failover。 | **Blocked：当前 Standard_ZRS，不具备 geo failover 前置**；不为补齐测试改成 GRS/GZRS。 |
-| A-02 | 有：Managed Redis flush database。 | **PendingVerification / AwaitingAuthorization**：当前数据库无 geo links，但独占/可重建性及删除恢复仍待确认；属于不可撤销数据删除，不默认配置/执行。不能以未知数据性质判永久 Blocked。 |
-| A-04 | 有：Managed Redis force-unlink。 | **Blocked：实际数据库没有 geo-replication links，无可 unlink 的对象**；这是已证实当前拓扑缺项，不是缺 SDK。需要另行批准 geo topology/恢复生命周期后重评，不自动创建第二实例。 |
-| C-01, C-02, C-03, C-04, C-05 | 当前未确认与单依赖连接/延迟/未知确认/DNS/throttle 语义等价的原生 Action。 | **暂不具备本轮原生执行能力**；Pod-wide network 或共享 NSG 修改不等价；不搭 proxy/hook 模拟补齐。 |
-| M-04 | 未确认独立 read replica 不可用的对应原生 Action。 | **暂不具备能力，且独立 replica 目标未证实**；HA standby 不替代 read replica。 |
-| R-03, R-04 | 未确认 Legacy Redis 有限 key invalidation / 全库 flush 的对应 Workspace Action。 | **暂不具备 Chaos Studio 原生能力**；Redis data-plane expire/flush 是另行评审的服务原生操作，不套 Managed Redis Action。 |
-| A-01, A-03 | 未确认 Managed Redis 单客户端断连/区域客户端重定向的等价原生 Action。 | **暂不具备本轮原生执行能力**；不把 flush/unlink 冒充断连、reboot 或区域丢失。 |
-| S-01, S-02 | 未确认 Blob interrupted-transfer/客户端 secondary-read fallback 的等价原生 Action。 | **暂不具备本轮原生执行能力**；当前 ZRS 也没有 RA-GRS/RA-GZRS secondary-read 前置。 |
-| B-04, H-03, H-04 | 未确认 commit/settlement/checkpoint 间隙或专用 consumer pause 的等价原生 Action。 | **暂不具备本轮原生执行能力**；状态禁用和 Pod 删除不能直接证明这些事务时序/积压语义。 |
-| K-06 | 固定 Pod memory hog 存在；没有已确认的逐步内存泄漏模型。 | **暂不具备对应原生能力**；K-03 不等价于 K-06，不编写增长进程补齐。 |
-| V-05, V-06, V-07, V-08, V-10 | 当前未确认 VM 精确目的路径 latency/loss、专用卷 exhaustion/IO、指定 guest 进程终止的对应 Workspace Action。 | **暂不具备本轮原生执行能力**；不回退 classic、不安装 guest 模拟；App Service kill-process 不适用于 VM。 |
-| N-04, N-05, N-06 | 当前未确认精确单 node 网络 loss/latency/API partition 的对应 Workspace Action。 | **暂不具备本轮原生执行能力**；Pod-only 故障不证明 node-wide，禁止修改共享 NSG/API 路由。 |
-| I-01 | 未确认 ASM/Istio control/data partition 的对应原生 Action。 | **PendingDesign / AwaitingTarget**：当前未确认精确机制/已有 mesh 目标；明确暂不具备本轮等价原生执行能力，不判平台永久不支持，不为此安装 mesh。 |
-| M-03, P-03, S-04, B-05, H-05, H-06 | 服务原生 PITR/Blob protection/Geo-DR 或 Geo-Replication 操作；不是本轮已确认的 Chaos Studio Action。 | **服务原生专项，暂缓**；需要独立恢复/geo 前置及生命周期授权，不记作 Chaos Studio 原生故障通过。 |
-| D-01, D-02 | D-02 catalog 有 Cosmos offline-region；D-01 客户端模拟未确认等价 Action。 | **Unselected：Cosmos 本轮不选**；不是必须补齐的 Failed/Passed 项。 |
-| V-01, V-02 | VM restart/pressure 可提供故障机制，但不能验证 broker durability。 | **Unselected：RocketMQ 业务本轮不选**；仅 V-03–V-10 对应基础设施范围仍按本表处理。 |
-| L-01, L-02, L-03, G-01, G-02, G-03 | catalog 有 LB backend admin-state；其余精确网络/probe/Gateway 故障未确认等价 Action。 | **Future：本轮无获授权 LB/Gateway 目标**；不动 AKS 托管 LB、不创建新 Gateway。 |
-| E-01, E-02, E-03 | 原生 Action 可提供部分依赖故障；不能自动证明完整业务流程。 | **Deferred：业务验收后续实施**；不作为当前原生测试前置。 |
+| PendingConfiguration | 能力存在，明确目标配置尚未创建。 | Capability exists; explicit target configuration is missing. |
+| AwaitingTarget | 尚未选定符合实体、namespace/labels 或实例边界的目标。 | A qualifying entity, namespace/labels or instance target has not been selected. |
+| PendingPrerequisite | 身份、权限、安装、保护或恢复前置待补；记录 owning state。 | Identity, permissions, installation, protection or recovery prerequisites are missing; record the owning state. |
+| PendingVerification | 支持、连接、真实匹配、容量或恢复证据待核验；不等于证实不支持。 | Support, connectivity, actual matching, capacity or recovery evidence is unverified; this does not prove incompatibility. |
+| PendingDesign | 精确故障语义或作用边界尚未映射，不用不同故障替代。 | Exact fault semantics or targeting boundaries are unmapped; do not substitute another fault. |
+| PendingValidation | 配置已部署，但原生 Validate 未通过或错误待定位。 | Configuration is deployed but native Validate has not passed or errors remain. |
+| Validated | 最新 Validate 为 `Succeeded` 且解析到明确目标；运行前仍重查动态安全边界与授权。 | Latest Validate is `Succeeded` with explicit resolved targets; dynamic safety and authorization still need pre-run checks. |
+| AwaitingAuthorization | 执行、破坏性影响、范围扩大或恢复生命周期待授权。 | Execution, destructive impact, expanded scope or recovery lifecycle awaits approval. |
+| Blocked | 实际 SKU/拓扑或复现的未解决前置失败已有具体不兼容证据，只阻塞对应变体。 | Evidenced SKU/topology incompatibility or reproduced unresolved preflight failure blocks only the affected variant. |
 
-**原生执行最短流程：**
+原生能力另记“已确认 / 当前未映射 / 当前目标不兼容”；一个用例可有多个准备缺项。本表不修改完整 infra/business runner 的拒绝逻辑、安全门槛或结果枚举。
+Track native capability separately as confirmed / currently unmapped / incompatible with the current target. A case may have several missing prerequisites. This table does not change the full infra/business runner's rejection logic, safety gates or result enums.
 
-1. 进入现有 **Workspace 的发现资源与 Scenario Configuration**，不是 Experiments (classic) 的 Targets/capabilities。选择上表已通过原生 validation 的单故障配置；核对资源当前健康、参数/影响上限、停止条件与恢复措施。推荐先 M-02 或已有明确 queue 的 B-01/B-02，不同时故障多个资源。
-2. 在 Portal 创建/选择单 Action Scenario 与 Configuration，显式限定目标，不使用空筛选器。新 operator-owned 配置独立命名并登记 ownership；不改 Terraform-owned Workspace，不全量 apply 基础设施/Chaos stack。核对 validation/权限，不自动提升权限或触发 `fixResourcePermissions`。
-3. 用户显式 Execute。使用 Chaos Studio 原生 Scenario report，加 Azure Activity Log/已有 Azure Monitor 或 Kubernetes events 观察；不以新建 SDK/observer 为前置。持续观察停止阈值，按该 Action 是否可取消处理；Discrete 动作不能靠 Cancel 撤销。
-4. 确认故障实际命中、原生运行状态、目标恢复及无残留。按原状态恢复 queue/topic/subscription 等；不默认第二次 failover/reboot。下一单故障必须等本次恢复。
-5. 报告分列：`原生运行结果`、`实际命中/资源恢复证据`、`完整 infra/business 用例结果`。后者未验证就明确“未验证”；`Skipped`、零目标或无实际作用不能标 Passed。
+### 0.2 每个用例的记录模板 / Per-case record
 
-原生 Execute/Validate/Cancel 路径已通过官方 `2026-08-01-preview` OpenAPI 核对：Configuration 的 `POST .../execute`、`POST .../validate` 均无请求 body；run 使用 `GET .../runs/{runId}` 和 `POST .../runs/{runId}/cancel`。仅供显式操作，不创建 Terraform run/provisioner，不猜测 `runs/start` API。
-
-新 RBAC assignment 创建顺序不保证即时生效。初次 validation 的 `RequiresAttention` 必须检查具体缺失权限，与真实角色/作用域/identity 对照后只重试失败配置；不得自动授予 Contributor、重复扩大授权或把 HTTP 200 当 validation 成功。运行前需要该配置最新原生 validation 为 `Succeeded` 且实际解析到唯一获授权目标。
-
-## 1. Recommendation and boundaries
-
-Follow the [Well-Architected reliability testing guidance][waf], but declare the evidence level. The current infra-first campaign validates actual fault impact, technical integrity, containment and recovery using §0.3. The later business phase validates application flows, bounded retries/deadlines, graceful degradation and end-to-end invariants. Neither phase is accepted merely because Azure reports a successful Action.
-
-Use three distinct mechanisms:
-
-1. **Chaos Studio Workspaces / Scenarios:** supported service-direct Actions, after regional catalog, resource eligibility, identity, and API validation.
-2. **Client-path simulation:** application test hooks or a protocol-aware fault proxy used only by selected test workloads in cloud AKS. This tests client resilience, not an actual Azure service outage.
-3. **Service-native recovery drills:** backup restoration and regional promotion procedures not supplied by the selected Chaos Action.
-
-Microsoft recommends Workspaces for new tests. Do not copy classic fault URNs, targets, or capabilities into Workspace Scenarios. Do not automatically fall back to classic when an Action is unavailable. See [Workspaces overview][workspaces] and [current Action catalog][catalog].
-
-Mandatory containment boundaries; numerical exposure defaults remain proposals:
-
-- Dedicated non-production targets and synthetic data; no production or shared infrastructure.
-- One service and one fault at a time; no overlapping runs on the same target.
-- One labeled application canary initially, plus an unaffected control canary.
-- Explicit target allowlist, namespace, workload labels, entity names, and destination endpoints.
-- No fault-time modification of shared DNS, NSGs, private endpoints or node-pool lifecycle. Necessary HA/control prerequisites are separately planned in their owning state and explicitly reviewed before deployment.
-- No deployment, resource restart, scaling, flush, failover, or fault execution as part of this planning change.
-- Approval of this document permits planning only. Deployment and execution require separate authorization.
-
-Canary selection limits test traffic, not the blast radius of a service-direct Action. A restart/failover/entity disable can affect other clients using that target. Follow the case-aware independent-control boundary in §0.3; a control client sharing a faulted service cannot establish instance-level containment. Enumerate indirect consumers and geo-linked members before authorization, including processes on the VM chosen for infra tests.
-
-## 2. Current coverage, evidence and ownership
-
-### 2.1 Evidence levels and current baseline
-
-Coverage has four independent levels: **declared configuration**, **installed/usable infrastructure**, **qualified fault impact**, and **accepted business recovery**. A module, mock pass, Ready pod, recommended Scenario, or no-drift plan cannot substitute for the next level.
-
-This review inspected the working tree and official documentation, not live Azure, state, saved plans, or private inputs. The installation statements below are **recorded prior evidence** from the [deployment runbook](./terraform-deployment-runbook.md), not newly repeated checks. Reconfirm them before a run. Uncommitted measurement/stop work is provisional, not a delivered runtime capability.
-
-| Area | Current source / recorded evidence | Remaining qualification |
+| 字段 / Field | 中文要求 | Corresponding English requirement |
 | --- | --- | --- |
-| Platform and AKS | [Root](../main.tf) owns the RG and wires private AKS/networking. Installation records private AKS, OIDC, Workload Identity and Azure RBAC. | Reference existing ownership/state; verify real canary/control placement, capacity, private DNS and authenticated access. No platform recreation. |
-| PaaS fixtures | [Fixture wiring](../fixtures.tf) includes MySQL, PostgreSQL, Managed Redis, legacy Redis, Event Hubs, Service Bus and Storage. Root defaults and environment profiles differ. | Module presence is not deployment/eligibility proof. Confirm selected resources, credentials/data grants, HA and protocols privately. |
-| Cosmos DB | [Module](../modules/cosmosdb/) exists; the documented dev profile disables account creation while retaining existing network/naming resources. | Optional existing eligible target or a separately costed fixture; no mandatory account creation to fill a matrix. |
-| RocketMQ | [VM module](../modules/vm/) and runbook describe pinned native bootstrap on a private VM. | Prove actual NameServer/Broker readiness, persistence, delivery contract and business effects. VM readiness alone is insufficient. Exclude jump/recovery hosts. |
-| Workspace and configuration | [Chaos module](../modules/chaos/) and [stack](../stacks/chaos/) declare a UAMI, RG-scoped discovery, target permissions and bounded single-Action configurations. Creation defaults off; no run/schedule resource. | Exact regional schemas, parameters, discovered/excluded lists and usable runtime permissions per selected case. Existing-Workspace reference mode is not implemented; do not create over an externally owned Workspace. |
-| AKS extension | Prior installation records version 0.1.12, auto-upgrade off, subscriber federation/connection trust, cluster operator grant, two Deployments 1/1 and DaemonSet 4/4 Ready. Target namespace had no workload pods. | Installation is not private-cluster functional qualification. Preview actual targets and prove a separately authorized fault. `Pending` connection status is a known issue, neither failure nor readiness proof. |
-| Scenario library | Prior records: 25 recommended Scenarios, zero configurations, no fault/verification Job run; post-extension Chaos plan exit 0. | Recommendations are service-populated, not implemented cases or runs. Counts can change with discovery; do not delete the library to achieve zero. |
-| Pod configuration | [Pod definitions](../modules/chaos/pods.tf) reference an external installation and implement five bounded Actions. | Compatibility flags are evidence assertions, not bypass switches. Namespace, architecture, image tools, admission and network cleanup require per-case verification. |
-| Measurement and stop | [Verification module](../modules/chaos-validation/) provides restricted, opt-in finite phased HTTPS Jobs, streaming evidence and an availability stop evaluator. Follow-up code adds bounded Blob/Service Bus reference clients, a crash-safe synthetic operation/effect ledger, private manifest gates and recorded recovery-window checks. | Real application flows, other protocol clients, qualified independent ledger storage, service/integrity observers and monitor deployment/notification remain incomplete. Scripts are packaged, but the declared Job still runs `probe.py`; no reference traffic or fault is started by packaging. |
-| Monitoring, policy and tests | [Monitoring](../modules/monitoring/), [focused tests](../tests/) and [validation-only CI](../.github/workflows/terraform-validation.yml) exist. | Historical counts are not a fresh result. Confirm selected metrics/alerts, policy applicability, current checks and private evidence retention. |
-| Supporting components | [Cluster stage](../stacks/cluster/) offers opt-in ingress/GitOps; recorded Chaos onboarding leaves them disabled. | No ingress/Argo CD required solely for Chaos. ACR, DNS, monitoring, backend, backup and recovery components are excluded from faults by default. AGFC is not an Azure Load Balancer Action target. |
+| ID / variant / phase | 稳定编号；按产品、协议、planned/forced、topic/subscription 等拆变体；`infra` / `business` 单独结论。原生层单独记录。 | Stable ID; separate product, protocol, planned/forced and topic/subscription variants. Verdicts are separate for `infra` and `business`; native results are another evidence layer. |
+| 假设 / Hypothesis | 预期受损对象、真实影响、技术/业务行为与恢复目标可观测、可判定。 | Intended impairment, actual impact, technical/business behavior and recovery objective must be observable and decidable. |
+| 前置 / Prerequisites | 当前 region/SKU/HA/agent/extension、健康、身份、消费者、保护、容量、预算及停止恢复权限。 | Current region/SKU/HA/agent/extension, health, identities, consumers, protection, capacity, budgets and stop/recovery rights. |
+| 机制 / Mechanism | 原生 service-direct、extension、agent、客户端模拟或服务恢复专项；完整 Action/API/version/schema，不猜 ID、不自动回退 classic。 | Native service-direct, extension, agent, client simulation or service recovery drill; verified Action/API/version/schema, with no guessed IDs or automatic classic fallback. |
+| 范围 / Scope | 精确资源/实体/实例/namespace AND labels、实际匹配数、排除项、强度、duration 与硬截止；禁止空/wildcard。 | Exact resource/entity/instance/namespace AND labels, actual match count, exclusions, intensity, duration and hard deadline; no empty/wildcard targeting. |
+| 验收 / Acceptance | 基线→注入→实际影响→停止→逐窗口恢复；独立证据、数据核对、限制与结果。Action duration 不等于 outage/RTO。 | Baseline→injection→actual impact→stop→windowed recovery, with independent evidence, reconciliation, limitations and verdicts. Action duration is not outage/RTO. |
 
-The reviewed toolchain is CLI **1.15.6** (CI/runbook), AzureRM **4.55.0**, AzAPI **2.14.0**, Random **3.7.2**, and cluster providers Kubernetes **2.38.0** / Helm **2.17.0**. [Root constraints](../version.tf) permit Terraform `>=1.9,<2.0`; this is not an exact executable pin. Respect each stage's lockfile and existing module-test override practice. Do not upgrade providers or change backends as part of this consolidation.
+### 0.3 分阶段技术与 HA 前置 / Technical and HA prerequisites by phase
 
-Original findings about absent modules/CI/Workspaces, AzureRM 3.115.0/AzAPI 2.7.0 and failed provider downloads are superseded as current inventory. Historical test/lint/scan counts remain historical, including unresolved policy applicability; this review neither re-ran them nor declared them resolved. Earlier RG, network, credential, naming and interface changes still require state-specific migration scrutiny on any older environment.
+本轮先原生运行，不为此新建 canary、observer Job、SDK 流量、proxy 或账本。下表用于后续完整 `phase=infra`；真实订单、库存、cache-aside/outbox 与业务 SLO 属于 `phase=business`。技术探针不是实际应用流量，原生 `Succeeded` 不等于任一完整阶段 Passed。
+The current native-first phase does not require new canaries, observer Jobs, SDK traffic, proxies or ledgers. The following table governs later full `phase=infra`; real orders, inventory, cache-aside/outbox and business SLOs belong to `phase=business`. Technical probes are not real application traffic, and native `Succeeded` does not pass either full phase.
 
-**2026-11-23 implementation follow-up:** Cloud testing was conditionally authorized after readiness; this is separate from documentation approval and does not authorize new destructive/shared-lifecycle changes. Bootstrap received a verified official AzAPI `h1:` checksum only, without a version/state change. Reference clients and ledger/manifest checks remain offline evidence. Later temporary managed-identity access proved authenticated private AKS readiness; all temporary IAM/guest assets were removed and original VM identity restored. Requalify access and targets before any run. Earlier environment migration risks remain independently reviewed; §0 is the current campaign selection, not a full-matrix success claim.
-
-### 2.2 Ownership and Terraform contract
-
-| Owner | Resources / responsibility | Boundary |
+| 对象 / Target | 中文技术证据 | Corresponding English technical evidence |
 | --- | --- | --- |
-| Platform state | RG, AKS/VNet/ACR, selected PaaS/VM fixtures and bounded monitoring | Preserve existing inputs, addresses and deployed resources; disabling an already-enabled component can delete it. |
-| Cluster state | Optional controller/GitOps and verification namespace, scripts and explicitly approved Jobs | Independently authenticate to existing private AKS; Job creation runs traffic and needs approval even with no Chaos fault. |
-| Chaos state | Workspace/UAMI, discovery grants, reviewed service-direct permissions and Scenarios/configurations | Configuration only. One stable-key case per initial configuration; no provisioner/run/scheduler. |
-| Operator installation | AKS extension, subscriber identity/federation, connection and built-in cluster operator grant | Reference, do not duplicate. Adoption requires an explicit ownership/import plan. |
-| Recovery operator | Fault stopping/removal, native restoration and evidence collection | Separately authorized actions; no default fault-start privileges on application or verification identities. |
+| VM | Azure/guest health、CPU/memory/disk/IO、精确进程、实际协议连接；注入达标、非目标/恢复健康、无残留。Running 不替代 guest readiness。 | Azure/guest health, CPU/memory/disk/IO, exact process and real protocol connectivity; achieved effect, healthy non-target/recovery paths and no residue. Running is not guest readiness. |
+| AKS | 原/新 Pod UID、node/instance、Ready/events/lease、requests/limits、实际副本/zone/存储放置及剩余容量；不只看新 Pod 存在。 | Original/replacement Pod UIDs, node/instance, Ready/events/leases, requests/limits, actual replica/zone/storage placement and spare capacity; replacement existence alone is insufficient. |
+| MySQL / PostgreSQL | 有限唯一 ID 事务写读、attempt/ack/unknown、已确认数据、连接和 HA/角色恢复；未知 commit 先查后判。 | Finite unique-ID transactions, attempt/ack/unknown reconciliation, acknowledged data, connections and HA/role recovery; reconcile unknown commits before deciding. |
+| 两种 Redis / Both Redis products | 独立 keys 的读写/版本、连接/拓扑/副本；flush 仅独占可重建库并核对全部 geo links，不承诺缓存写入零丢失。 | Isolated key reads/writes/versions, connectivity/topology/replicas; flush only exclusive reconstructible databases after checking every geo link. No universal zero-loss cache-write guarantee. |
+| Blob | operation ID、hash、length、ETag/version、ack/unknown、保护恢复；测试 prefix 与 backend/evidence/backup 分离。 | Operation IDs, hashes, lengths, ETags/versions, ack/unknown and protection/restoration; isolate test prefixes from backend/evidence/backup storage. |
+| Service Bus | 专用 queue/topic/subscription、有限 publish/PeekLock/settlement、ack/unknown、唯一技术 effect、outstanding/DLQ；恢复原状态。 | Dedicated queue/topic/subscription, finite publishing/PeekLock/settlement, ack/unknown, unique technical effects and outstanding/DLQ reconciliation; restore prior state. |
+| Event Hubs | 专用 hub/group、partition/sequence/offset、ack/unknown、独立 durable checkpoint、lag/retention/replay；不承诺全局顺序、exactly-once 或平台 DLQ。 | Dedicated hub/group, partition/sequence/offset, ack/unknown, independent durable checkpoints and lag/retention/replay; no global ordering, exactly-once or platform DLQ guarantee. |
 
-Use separate environment/stage state paths or backend keys and identities. tfvars and CLI workspace names are not isolation. The root currently defaults to local state; protect it and prevent divergent copies/concurrent writers. Team/cloud deployment should use independently bootstrapped, protected Entra-authenticated remote state under the runbook's separately approved migration. Never fault backend/evidence/backup storage or use empty state, `state rm`, force-unlock or destroy to hide drift.
+HA/控制资源是原 owning state 的独立前置变更：审 SKU/region、保护、成本和 delete/replace/migration，不全量重建、不改 backend、不重复管理。ZRS 不等于 GRS/GZRS，Geo-DR 不等于 Geo-Replication，HA standby 不等于独立控制依赖。客户端局部故障可共享未被操作的服务，但必须证明 control path 不受影响；实例级故障须独立依赖与恢复路径。同一服务中的另一实体不能证明实例级隔离，现有 runner 更严格门槛保持不变。
+HA/control resources are separately reviewed prerequisites in their original owning state: assess SKU/region, protection, cost and delete/replace/migration risks without full recreation, backend changes or duplicate ownership. ZRS is not GRS/GZRS, Geo-DR is not Geo-Replication, and an HA standby is not an independent control dependency. Client-local faults may share an untouched service only with proven unaffected control access; instance-wide faults require independent dependencies and recovery paths. Another entity in the same service does not prove instance containment; stricter existing runner gates remain unchanged.
 
-Preserve the [Chaos input contract](../modules/chaos/README.md):
+### 0.4 用户 39 个中文场景与规范映射 / Mapping of all 39 supplied Chinese scenarios
 
-- Explicit dev/test metadata, RG discovery scopes, exact target IDs and production/shared/recovery exclusions.
-- Verified case-sensitive Action parameters, required entity names and JSON-array encoding for `queues`, `topics`, `subscriptions`, `eventhubs` and linked database IDs. Regional schema confirmation is still required.
-- Service-direct structural durations currently allow whole minutes **1-5**. The ARM schema requires `duration` even for Discrete Actions; it is not their outage duration or rollback promise.
-- Pod effects currently cap at **60 seconds**, affected pods at **25%**, CPU at **1-2 cores**, memory at **1-128 megabytes** (`memoryConsumptionMegabytes`), latency at **1-500 ms**, packet loss at **1-10%**. Use the minimum practical effect first; do not relax code guards merely to match a proposed later wave.
-- Namespace membership must match installation; exact AND-matched labels include `chaos-canary=target`. Empty/wildcard selectors and default/system/control/verification namespaces are forbidden.
-- Destructive-configuration opt-in is not execution permission. The code's destructive list is not a complete operational risk classification: DB forced failover, all-node reboot, pod deletion and node shutdown also need explicit impact/recovery review.
-- Discovery Reader access is separate from Action rights. Custom role definitions are RG-scoped, but assignments stay on exact service targets; the installer owns the distinct cluster-level pod operator grant. Never grant subscription Owner/Contributor or auto-repair permissions.
+每个原场景一行；同一行的多个编号/变体分别运行和验收，不代表组合故障。原英文清单额外覆盖的 PostgreSQL、Managed Redis、Service Bus、PITR、客户端与业务场景继续保留在 §4–§6。
+Each supplied scenario has one row. Multiple IDs/variants in a row require separate runs and acceptance, not a combined fault. Additional PostgreSQL, Managed Redis, Service Bus, PITR, client and business cases from the former English catalog remain in §4–§6.
 
-For `2026-08-01-preview`, use `resourceTargeting`, not mixed legacy `filters`/`exclusions`. Values within one include category are OR; non-empty categories combine with AND; exclusion wins. This is **not** the pod label AND contract. Empty/missing criteria do not restrict discovery. Require exact resource IDs and compare resolved/excluded resources with the private allowlist before each run. Preserve parameters during any configuration update; older CLI configuration commands use a different API model.
-
-### 2.3 Current service-direct support
-
-The following identifiers and semantics are from the [Workspaces Action catalog][catalog]. Listed support is **not** proof of availability or eligibility in the user's subscription.
-
-| Service / resource type | Action ID | Semantics and eligibility checks |
-| --- | --- | --- |
-| MySQL / `Microsoft.DBforMySQL/flexibleServers` | `microsoft-mysql-failover/1.0` | Cancelable; required `RestoreOnStop`. Confirm healthy eligible HA server. Restoring the original primary is an attempted operation, not a guaranteed rollback. |
-| MySQL / same type | `microsoft-mysql-restart/1.0` | Discrete; one restart, no automatic undo. |
-| PostgreSQL / `Microsoft.DBforPostgreSQL/flexibleServers` | `microsoft-azurepostgresql-failover/1.0` | Cancelable; required `FailoverMode`: `PlannedFailover` or `ForcedFailover`. `RestoreOnStop` and `SkipIneligibleServers` are optional. Read replicas and non-HA servers are ineligible. |
-| Azure Cache for Redis / `Microsoft.Cache/redis` | `microsoft-azureclusteredcacheforredis-reboot/1.0` | Discrete; `RebootType`: `PrimaryNode`, `SecondaryNode`, or `AllNodes`. Use an explicit `ShardId` only for clustered caches. Not the Managed Redis reboot mechanism. |
-| Managed Redis / `Microsoft.Cache/redisEnterprise` | `microsoft-managedredis-flushdatabase/1.0` | Discrete; `DatabaseName`. Destructive: a geo-linked flush can remove all data from ALL linked caches. |
-| Managed Redis / same type | `microsoft-managedredis-forceunlink/1.0` | Discrete; `DatabaseName`, `LinkedDatabaseResourceIds`. Changes replication topology; no automatic re-link/undo. |
-| Storage / `Microsoft.Storage/storageAccounts` | `microsoft-storageaccount-plannedfailover/1.0` | Discrete; account-wide, not container-scoped. Requires eligible geo-redundancy, completed initial synchronization, and both regions available. |
-| Service Bus / `Microsoft.ServiceBus/namespaces` | `microsoft-servicebus-changequeuestate/1.0` | Cancelable; required `desiredState`: `Active`, `Disabled`, `SendDisabled`, or `ReceiveDisabled`; explicit `queues`. |
-| Service Bus / same type | `microsoft-servicebus-changesubscriptionstate/1.0` | Discrete; required `topic`, `subscriptions`, `desiredState` (`Active` or `Disabled`). Explicit recovery is required. |
-| Service Bus / same type | `microsoft-servicebus-changetopicstate/1.0` | Discrete; required `topics`, `desiredState` (`Active` or `Disabled`). Explicit recovery is required. |
-| Event Hubs / `Microsoft.EventHub/namespaces` | `microsoft-eventhub-changeeventhubstate/1.0` | Cancelable; `desiredState`: `Active`, `Disabled`, `SendDisabled`; explicit `eventhubs`. No queue `ReceiveDisabled` value. |
-| Cosmos DB / `Microsoft.DocumentDB/databaseAccounts` | `microsoft-documentdb-offlineregion/1.0` | Cancelable; required `RegionName` is a display name, not a normalized location filter. Confirm API/topology eligibility and recovery; single-region defaults are insufficient. |
-| VM / `Microsoft.Compute/virtualMachines` | `microsoft-compute-restart/1.0` | Discrete; VM restart, not a proven broker recovery. Exclude management/recovery VMs. |
-| VMSS / `Microsoft.Compute/virtualMachineScaleSets` | `microsoft-virtualmachinescaleset-shutdown/1.0` | Cancelable; explicit `Zones` and reviewed `GracefulShutdown`. May affect every matching instance in a selected zone; not a single-node selector. |
-| VM / qualified agent (VMSS catalog-only) | `microsoft-compute-cpuPressure/1.0` | Continuous; actual regional parameter `pressureLevel` 1–100 and required `duration`. Module derives duration, requires one agent-verified VM, and caps initial pressure at 50 unless separately opted in. No assumed single-VMSS-instance targeting. |
-| VM / qualified agent (VMSS catalog-only) | `microsoft-compute-physicalMemoryPressure/1.0` | Continuous; `pressureLevel` 1–99 and required `duration`; same agent/ownership and default-low-pressure gates. Physical memory pressure is not a progressive leak. |
-
-Before configuring a case, retrieve the Workspace region's full Action schema, verify parameter shapes, permissions, duration limits and target eligibility, and preserve the pinned `2026-08-01-preview` API. Official catalog presence and AzAPI schema acceptance are not subscription eligibility. Workspace and targets can be in different regions.
-
-The module allowlists **14** service-direct Actions plus **2** bounded, agent-qualified single-VM pressure Actions, not every official compute Action. The UK South catalog and installed recommended Scenarios were queried read-only: pressure parameter names are lowercase/camelCase `pressureLevel` and `duration`; the table preserves the installed Scenario `actionId` casing rather than substituting a canonical URN. See the [single-VM pressure contract](../modules/chaos/README.md#optional-single-vm-pressure-definitions). This confirms regional schema, not guest eligibility or a successful run. Compute shutdown/redeploy/delete/hibernate variants are not interchangeable; VMSS pressure remains unimplemented pending exact-instance qualification. Any extension requires separate schema, ownership, safety tests and recovery qualification, never an automatic fallback to classic.
-
-No direct Managed Redis reboot Action is listed in this catalog. Connection interruption is not evidence of a real node failover. Likewise, queue disable is not a Service Bus regional outage, and an application network blackout does not physically disable an Azure region.
-
-## 3. Workload and measurement design
-
-**Phase boundary:** 本节实际应用流量、交易/库存/cache-aside/outbox、业务 SLO/RTO/RPO 的契约用于后续 `phase=business`。本轮 `phase=infra` 使用 §0.3 的有限技术探针与技术数据完整性，仍需云端无故障基线、独立证据、stop/recovery 和实测故障；没有业务接口不阻塞已独立合格的 infra case。不能把技术通过写成本节业务目标通过。
-
-### Cloud AKS test harness
-
-- Run both the real application canary and an independent verification Job. A raw database ping or SDK probe alone cannot establish business resilience.
-- Mount scripts through ConfigMaps; use validated, pinned tool images, resource requests/limits, execution deadlines, finite retries, and cleanup policies.
-- Use least-privilege workload identities and secret references. Never mount a host Docker socket or grant general node privileges to business validation Jobs.
-- Use application test hooks or dedicated protocol-aware proxies for simulations. Keep TLS validation enabled; do not introduce a plaintext network bypass.
-- A proxy/hook must demonstrably affect the selected application path. Account for SQL/Redis/AMQP persistent connections, connection pools, and all relevant cluster endpoints.
-- If in-cluster network injection is later selected, separately validate the AKS extension preview's private-cluster support and compatibility. Installing classic Chaos Mesh is not a universal prerequisite.
-- Keep observability and recovery access outside the injected path. An independent recovery operator must be able to remove a fault even if the canary stops responding.
-- Separate fault-target namespace, unaffected control workload, and restricted verification/evidence namespace. Freeze actual matched pods and maximum affected count; percentage rounding can affect one pod even at low percentages.
-- Treat phased Jobs as approved traffic, not passive configuration. The default 900-second Job cannot contain a 15-minute baseline plus exposure plus 10-minute recovery. Use separately approved finite phases with continuous independent observations across transitions; a gap is missing evidence, not healthy recovery.
-- The HTTPS probe's socket timeout is not a hard end-to-end cancellation deadline. Verify actual deadlines in the application/protocol client. The outer finite Job budget only limits harness lifetime.
-
-### Synthetic critical flows
-
-| Service | User flow to exercise continuously | Integrity evidence |
-| --- | --- | --- |
-| MySQL / PostgreSQL | Create an order with an idempotency key; update inventory in the same transaction; read the acknowledged order. | Independent ledger of attempted/acknowledged IDs; unique business effects; transaction invariants; no half-completed order/inventory updates. |
-| Both Redis products | Read an item through cache-aside; update the source of truth and invalidate/refill its cache entry. | Source-of-truth comparison, version/freshness checks, cache hit/miss rate, bounded backing-store reads. |
-| Storage | Upload a blob with a unique operation ID; download and verify it; exercise application retries for interrupted transfer. | Hash, length, object/version metadata, acknowledgment ledger, and absence of duplicate logical uploads. |
-| Service Bus | Publish an order event, consume with PeekLock, persist its business effect, and settle the message. | Producer acknowledgments, consumer attempt ledger, one committed business effect per ID, outstanding messages, DLQ reasons. |
-| Event Hubs | Publish uniquely identified events to known partitions; consume through a dedicated group, commit the business effect, then checkpoint. | Producer ack/unknown ledger, partition offsets/sequence, durable checkpoints and unique effects. No unsupported global ordering or exactly-once delivery claim. |
-| Cosmos DB, if selected | Write/read a synthetic business item with an explicit partition key and concurrency/idempotency contract. | Ack/unknown ledger, version/ETag/session evidence, observed freshness and conflict reconciliation under the chosen consistency/write mode. |
-| RocketMQ | Publish unique business events with the configured acknowledgment mode; commit consumer effects before successful acknowledgment. | Broker/store health, publish outcomes, redelivery/retry/DLQ records and unique durable business effects. State the actual flush/replication guarantee. |
-| AKS pods/nodes | Drive the actual application flows while selected compute becomes impaired/unavailable. | Correlated target pod/node events, request outcomes, independent durable ledgers, readiness/placement/capacity and recovery timeline. |
-
-These are proposed reference flows. Before execution, map them to actual application endpoints and business invariants. If only synthetic direct clients exist, report the result as client-library resilience, not full application validation.
-
-For DB transactions whose commit response is lost, treat the outcome as **unknown** until reconciled by idempotency key. Do not blindly retry a non-idempotent write. For Service Bus, duplicate delivery is expected in some failure paths; duplicate business effects are not.
-
-### Proposed acceptance targets for review
-
-These are **project proposals, not Microsoft SLAs or universal service guarantees**.
-
-| Dimension | Initial proposal |
-| --- | --- |
-| Baseline | 15 minutes; at least 1,000 relevant business operations; >=99.9% success and within the application's agreed latency SLO. Extend the window at low traffic rates. |
-| Normal simulation exposure | 60 seconds initially; increase to 180 seconds only after a clean recovery. One application canary; one dependency. |
-| End-to-end request deadline | 10 seconds for synchronous reference flows; replace with the actual business deadline before execution. No retry chain may exceed it. |
-| Retries | Bounded exponential backoff with jitter; proposed maximum 3 retries total across all layers. Do not multiply SDK and application retries unintentionally. |
-| Cache fallback | >=99% business success during cache-only loss, with p95 <=2x baseline, if the source of truth has verified fallback capacity. Otherwise require explicit, truthful bounded failure. |
-| Dependency hard outage | A read/write requiring that unavailable dependency may fail. It must fail explicitly within the deadline or be durably queued under the agreed business contract; no false success. Unaffected control flow stays within baseline SLO. |
-| Post-fault recovery | Return to the agreed SLO within 120 seconds after a short simulation is removed; then maintain it for 10 consecutive minutes. |
-| DB HA failover | Proposed end-to-end RTO <=180 seconds from fault initiation and zero lost acknowledged committed transactions; confirm workload realism with replay backlog and connection-pool behavior. |
-| Redis reconnection / warm-up | Proposed reconnection <=120 seconds after path restoration; hit ratio within 10 percentage points of baseline within 10 minutes. Recent cache writes can be lost; cache availability is not a durability guarantee. |
-| Messaging recovery | Account for every acknowledged message; no duplicate committed business effect. Drain the bounded test backlog within 10 minutes after recovery, allowing the approved TTL/DLQ policy. |
-| Storage planned failover | Separate maintenance window: reserve 3 hours for failover, verification, and failback. Proposed <=90 minutes per transition, to be confirmed for account size/features; no acknowledged object loss. |
-| PITR / regional recovery | Agree RTO and RPO per target, backup/replication configuration, and data size before execution. No assumed zero RPO for asynchronous replication or backup restore. |
-
-### Measurement definitions
-
-- **Business success rate:** operations satisfying the agreed synchronous or durable-acceptance contract / attempted relevant operations. HTTP 2xx, a SQL ping, queued-in-memory work or Azure Action success alone is not business success.
-- **Retry amplification:** total downstream attempts / original logical operations, with SDK/application/worker retries counted together. Freeze offered workload rate and compare downstream attempt rate separately for stop evaluation.
-- **Integrity:** zero missing acknowledged durable effects, zero duplicate committed business effects, zero broken stated invariants. Unknown outcomes must be reconciled; unresolved IDs make integrity Inconclusive, never zero-loss.
-- **RTO:** fault/incident initiation to sustained application SLO recovery; also record first restored service and backlog completion. **RPO:** observed acknowledged data gap at recovery, in operation counts and time; do not infer it from configuration alone.
-- **Sustained recovery:** ten consecutive one-minute windows meet the selected success/latency contract, each with a pre-agreed minimum sample count; missing windows are Inconclusive. An aggregate ten-minute percentile cannot prove all windows passed.
-- Baseline operations count logical business work, not retries or probe requests. At 1,000 operations, >=99.9% allows at most one failure; this is a finite acceptance check, not statistical certification of a long-term SLA. Record sample counts per path/window and do not fabricate p99 from insufficient traffic.
-
-Measure separately: fault start, observed impact, alert, recovery decision, recovery action, dependency availability, application SLO recovery, and backlog completion. RTO for operator-driven DR includes detection and decision time, not just the Azure operation.
-
-For simulations, also record time from fault removal to recovery. Do not use that shorter metric as a substitute for incident RTO.
-
-## 4. Common client-path cases
-
-Each case inherits the baseline, canary scope, measurement, and stop rules above. Re-run separately against each selected service's actual client protocol. C-01 through C-05 are hooks/proxy simulations, not service-direct Actions; skip non-applicable semantics explicitly rather than fabricating a protocol response. Pod-wide network faults affect all pod containers/destinations and are not equivalent to isolating one dependency.
-
-| ID / priority | Hypothesis and procedure | Pass evidence / recovery |
-| --- | --- | --- |
-| C-01 / P0 | **Connection blackout:** interrupt established and new connections from one canary to one dependency for 60 seconds. Leave the control client unaffected. | Deadlines honored; retry volume bounded; no false success or duplicate effects; control healthy. Remove the injection, recreate only affected test connections if necessary, and prove application recovery. |
-| C-02 / P0 | **Latency degradation:** introduce +100 ms, then +500 ms in separate runs for 60 seconds each; do not change shared routes. | Pool/worker queues remain bounded; timeouts and circuit-breaker behavior match the agreed contract; p95/p99 and retry amplification captured. Remove delay and verify queues and pools normalize. |
-| C-03 / P0 | **Ambiguous acknowledgment:** for a bounded set of synthetic operations, permit the request to reach the service but interrupt its response or settlement. Use a protocol-aware hook where required. | Reconcile unknown outcomes; one business effect per ID; no lost acknowledged durable work. Remove the hook and reconcile every selected ID. |
-| C-04 / P1 | **Dependency DNS failure:** break resolution only for the test workload's dependency hostname for 60 seconds; test both reused and newly created connections. | Correct dependency-specific alerting, bounded failure, re-resolution and reconnect after removal. Existing sockets alone cannot establish successful DNS fault coverage. Restore only test-local DNS configuration. |
-| C-05 / P1 | **Throttle/resource-limit response:** use bounded client hooks matching the actual SDK's error semantics. Use HTTP 429/503 only for applicable HTTP APIs; do not fabricate HTTP responses for SQL, Redis, or AMQP. | Retry only retryable errors; honor applicable server delay; bounded concurrency; no OOM or retry storm. Disable the hook, drain work, and verify recovery. This is simulation, not proof of real Azure throttling. |
-
-Authentication refresh failures can be added later with a dedicated test identity. Do not revoke shared permissions or change production credentials to simulate them.
-
-## 5. Service-specific test cases
-
-### 5.1 Azure Database for MySQL Flexible Server
-
-Prerequisites: approved Flexible Server, healthy eligible HA standby for M-01, tested backup availability for M-03, FQDN-based connection strings, and transaction/idempotency verification. Distinguish same-zone HA from zone-redundant HA. Neither a forced HA failover nor a restart is a complete region outage. See [MySQL HA][mysql-ha] and [backup/restore][mysql-backup].
-
-| ID / priority | User story, hypothesis, and fault | Scope / exposure | Acceptance and recovery |
+| 原编号 / Source | 中文场景 | Corresponding English scenario | Case ID |
 | --- | --- | --- | --- |
-| M-01 / P0 | As an order writer, I can continue after HA primary failover without losing committed orders. Use the MySQL failover Action under steady read/write load. | One dedicated HA server; one failover; proposed 5-minute Action duration subject to catalog validation. Select `RestoreOnStop=false` initially to avoid an unreviewed second transition. | Meet HA RTO; zero acknowledged transaction loss; pools reconnect via FQDN; inventory invariants hold. Verify the new primary and healthy HA. A planned return to the original primary is a separately authorized transition. |
-| M-02 / P0 | As a user, I receive a bounded error or safe retry during a database restart, and service returns without manual application restart. Use the restart Action. | One dedicated server; one Discrete restart, not a timed 60-second outage. | Measure actual outage; no retry storm; no partial transactions or duplicate orders. Wait for Ready, rebuild stale connections, validate data and application SLO. |
-| M-03 / P1 | As an operator, I can recover accidentally altered synthetic records to a chosen restore point. Use native PITR, not a Chaos failover Action. | One test fixture; record a checkpoint, alter only its data, restore to a new isolated server. | Restored pre-checkpoint records and invariants match; RTO/RPO measured; restored authentication/private networking verified. Do not overwrite or destroy the source. Cutover is optional and separately authorized. |
-| M-04 / P1 | 独立 read replica 路径不可用时，主服务和恢复路径保持在约定边界。先评审专用 replica 的客户端局部隔离；无安全对应原生 Action 则标 simulation。 | 必须有实际独立 read replica、专用测试流量、lag/连接基线与准确目标；托管 HA standby 不是 read replica。当前 AwaitingTarget / PendingDesign，不把未证实目标当永久 Blocked。不得改共享 replica NSG 或扩大到主服务。 | 证明 replica 测试路径确实失效、主路径/control 不受损；移除本次隔离，恢复连接、lag/replication 与合成读写。客户端隔离不能宣称 replica 服务自身停机或 service-to-service replication 被切断。 |
+| 4.1.1 | VM CPU 满载 | VM CPU saturation | V-03 |
+| 4.1.2 | VM 内存满载 | VM memory saturation | V-04 |
+| 4.1.3 | VM 网络延时 | VM network latency | V-05 |
+| 4.1.4 | VM 网络丢包 | VM packet loss | V-06 |
+| 4.1.5 | VM 磁盘满载 | VM disk exhaustion | V-07 |
+| 4.1.6 | VM 磁盘 IO 压力 | VM disk IO pressure | V-08 |
+| 4.1.7 | VM 重启 | VM restart | V-09；不替代 / not V-01 |
+| 4.1.8 | VM 应用进程终止 | VM application process termination | V-10 |
+| 4.2.1 | AKS Pod 意外终止 | AKS Pod termination | K-01 |
+| 4.2.2 | AKS Pod CPU 满载 | AKS Pod CPU saturation | K-02 |
+| 4.2.3 | AKS Pod 内存泄漏 | AKS Pod memory leak | K-03 固定压力 / fixed pressure；K-06 逐步增长 / progressive growth |
+| 4.2.4 | AKS Pod 网络丢包 | AKS Pod packet loss | K-05 |
+| 4.2.5 | AKS Pod 网络延时 | AKS Pod network latency | K-04 |
+| 4.2.6 | AKS 节点 CPU 满载 | AKS node CPU saturation | N-02 |
+| 4.2.7 | AKS 节点内存满载 | AKS node memory saturation | N-03 |
+| 4.2.8 | AKS 节点网络丢包 | AKS node packet loss | N-04 |
+| 4.2.9 | AKS 节点网络延时 | AKS node network latency | N-05 |
+| 4.2.10 | ASM 控制层/数据层断连 | ASM control/data-plane disconnection | I-01 |
+| 4.2.11 | AKS API Server/节点断连 | AKS API Server/node partition | N-06 |
+| 4.3.1 | MySQL HA 故障转移 | MySQL HA failover | M-01 |
+| 4.3.2 | MySQL 重启 | MySQL restart | M-02 |
+| 4.3.3 | MySQL 网络中断 | MySQL connection blackout | C-01.mysql |
+| 4.3.4 | MySQL 只读副本不可用 | MySQL read-replica unavailability | M-04 |
+| 4.4.1 | Storage 网络不可达 | Storage connection/DNS failure | C-01.blob / C-04.blob |
+| 4.4.2 | Blob 误删与恢复 | Blob accidental deletion and recovery | S-04 |
+| 4.4.3 | Storage 区域故障转移 | Storage planned regional failover | S-03；不是实际区域中断 / not an actual region outage |
+| 4.5.1 | Legacy Redis 网络不可达 | Legacy Redis connection/DNS failure | C-01.legacy-redis / C-04.legacy-redis |
+| 4.5.2 | Legacy Redis 主节点重启/倒换 | Legacy Redis primary reboot/transition | R-01 |
+| 4.5.3 | Legacy Redis 副本重启 | Legacy Redis replica reboot | R-02 |
+| 4.5.4 | Legacy Redis 全数据库清空 | Legacy Redis full database flush | R-04；不替代 / not R-03 |
+| 4.6.1 | Event Hubs 网络不可达 | Event Hubs connection/DNS failure | C-01.event-hubs / C-04.event-hubs；不替代 / not H-01/H-02 |
+| 4.6.2 | Event Hubs 消费积压 | Event Hubs consumer backlog | H-04 |
+| 4.6.3 | Event Hubs 跨区域倒换 | Event Hubs cross-region promotion | H-05 元数据 / metadata；H-06 数据复制 / data replication |
+| 4.7.1 | LB 单后端故障 | LB single-backend failure | L-01 / Future |
+| 4.7.2 | LB 后端网络中断 | LB backend network interruption | L-02 / Future |
+| 4.7.3 | LB 后端探针异常 | LB backend probe failure | L-03 / Future |
+| 4.8.1 | Application Gateway 单后端故障 | Application Gateway single-backend failure | G-01 / Future |
+| 4.8.2 | Application Gateway 后端网络中断 | Application Gateway backend network interruption | G-02 / Future |
+| 4.8.3 | Application Gateway 后端探针异常 | Application Gateway backend probe failure | G-03 / Future |
 
-The MySQL HA documentation describes typical failovers of 60-120 seconds; this is not an end-to-end application guarantee. Geo-restore requires separately verified geo-redundant backups and is outside the default wave.
+额外 N-07 是单测试节点不可用；N-01 是获批 zone 范围不可用，两者不能互相验收。满载/泄漏是原始场景名称，不授权直接 100% 压力或无限增长。
+Additional N-07 covers one unavailable test node; N-01 covers the approved zone scope. Neither passes the other. Saturation/leak are supplied scenario names, not authorization for immediate 100% pressure or unbounded growth.
 
-### 5.2 Azure Database for PostgreSQL Flexible Server
+<a id="05-原生能力优先本轮执行与暂缓标注"></a>
+### 0.5 原生优先：实际结果与全部用例状态 / Native-first results and status of all cases
 
-Prerequisites: healthy eligible HA primary/standby, supported compute tier, FQDN, valid connection-pool configuration, and backup readiness. Do not silently substitute read-replica promotion for HA failover. See [PostgreSQL HA][pg-ha] and [backup/restore][pg-backup].
+**最新实际证据：** 2026-11-23 首轮 10:16:27–10:50:48，项目代码重跑 11:24:31–11:55:14（UTC+08:00）。两轮各执行同样 9 项：每轮 9 个 run / Action 为 `Succeeded`，7 项管理面影响/恢复 Passed，Redis 两项 Inconclusive；完整 infra/business 均 Inconclusive（未验证）。两轮共18次运行，仍为9个不同用例。
+**Latest recorded evidence:** First round 10:16:27–10:50:48 and project-code rerun 11:24:31–11:55:14 on 2026-11-23 (UTC+08:00). Each round executed the same nine cases: nine `Succeeded` runs/Actions, seven management-plane impact/recovery Passed and two Redis Inconclusive. Full infra/business verdicts remain Inconclusive (unverified). Eighteen runs cover nine distinct cases.
 
-| ID / priority | User story, hypothesis, and fault | Scope / exposure | Acceptance and recovery |
+| Case ID | 中文实际结果 | Corresponding English actual result |
+| --- | --- | --- |
+| B-01 / B-02 | queue 分别 Active→SendDisabled/ReceiveDisabled→Active；原生成功，管理面恢复 Passed；消息/业务完整性未验证。 | Queue Active→SendDisabled/ReceiveDisabled→Active in separate runs; native success and management recovery Passed; message/business integrity unverified. |
+| H-01 / H-02 | hub 分别 Active→SendDisabled/Disabled→Active；原生成功，管理面恢复 Passed；checkpoint/replay 未验证。 | Hub Active→SendDisabled/Disabled→Active in separate runs; native success and management recovery Passed; checkpoint/replay unverified. |
+| M-01 / M-02 | HA 切换/重启真实执行；最终 Ready、HA Healthy、Resource Health Available，管理面 Passed；事务和 RPO 未验证。首轮查询超时断档保留。 | HA failover/restart executed; final Ready, HA Healthy and Resource Health Available, management plane Passed; transactions/RPO unverified. Preserve the first-round query-timeout observation gap. |
+| P-01 | planned failover 原生成功、管理面恢复 Passed。首轮 Unavailable、重跑 Degraded 后均复核到 Available；使用同一 run 恢复观察，无重复 Execute。 | Planned failover succeeded natively and management recovery Passed. First-round Unavailable and rerun Degraded were rechecked to Available; observation resumed on the same run without duplicate Execute. |
+| R-01 / R-02 | 原生重启成功，但缺独立节点/连接/副本重新加入证据，实际影响 Inconclusive；不能把约8–10秒 run 时长当重启/outage。 | Native reboots succeeded, but independent node/connectivity/replica-rejoin evidence is missing, so impact is Inconclusive; approximately 8–10-second run durations are not reboot/outage durations. |
+
+收尾五个 PaaS 目标 Available、数据库 Ready/HA Healthy、queue/hub Active、无活动运行；private AKS 不变。重跑 Activity Log 含 queue write 4、hub write 4、MySQL restart 1、MySQL failover 1、PostgreSQL restart 1（planned failover 下层操作）、Redis forceReboot 2；审计不替代协议/数据证据。Chaos owning state 完整输入 replan exit code 0，仅证明该配置栈无漂移。详见原生报告 §1–§8。
+Final checks recorded all five PaaS targets Available, databases Ready/HA Healthy, queue/hub Active and no active runs; private AKS remained unchanged. Rerun Activity Log recorded four queue writes, four hub writes, one MySQL restart, one MySQL failover, one PostgreSQL restart (underlying planned-failover operation) and two Redis forceReboots; audit is not protocol/data evidence. Full-input Chaos-state replan exit code 0 proves only that configuration stack has no drift. See native report §1–§8.
+
+下表覆盖全部70个编号，是能力/准备状态，不是全矩阵通过结论；未列在上述实际执行表的61项均 `execution=NotRun`。
+The following table covers all 70 IDs as capability/preparation status, not matrix acceptance; the remaining 61 cases outside the executed table are `execution=NotRun`.
+
+| Case ID | 中文能力与本轮状态 | Corresponding English capability and campaign status |
+| --- | --- | --- |
+| M-01, M-02, P-01, R-01, R-02, B-01, B-02, H-01, H-02 | 已确认原生能力、明确单目标/单消息实体，实际结果见上表。 | Confirmed native capability with explicit single targets/entities; actual results above. |
+| P-02 | forced failover 已配置/Validated；执行仍 AwaitingAuthorization。SameZone HA 不证明 zone-loss。 | Forced failover configured/Validated; execution AwaitingAuthorization. SameZone HA does not prove zone-loss resilience. |
+| B-03 | 原生 topic/subscription state 存在；AwaitingTarget / PendingConfiguration，Discrete 恢复与 opt-in 待审；queue 结果不替代。 | Native topic/subscription state exists; AwaitingTarget / PendingConfiguration, with Discrete restoration and opt-in review pending; queue results do not substitute. |
+| V-09 | 单 VM restart 已 Validated；所有 broker/间接消费者、中断与 guest 恢复仍 PendingVerification，未执行。 | Single-VM restart Validated; broker/indirect consumers, interruption and guest recovery remain PendingVerification; not executed. |
+| V-03, V-04 | 原生 VM 压力存在；Ubuntu 22.04 合格，VM managed identity 缺失，public outbound/headroom/恢复待核验。原生运行自动安装并保留 agent，不需手工预装 classic agent。 | Native VM pressure exists; Ubuntu 22.04 qualifies, VM managed identity is missing and public outbound/headroom/recovery are unverified. Native execution installs and retains the agent; manual classic-agent preinstallation is unnecessary. |
+| K-01–K-05 | extension 能力存在、版本0.1.12已安装；AwaitingTarget / PendingVerification。当前 private API 观察路径不可用；官方 private-cluster preview 未验证，不是永久不支持。 | Extension capability exists and version 0.1.12 is installed; AwaitingTarget / PendingVerification. Current private-API observation access is unavailable; officially unvalidated private-cluster preview is not permanent incompatibility. |
+| N-01 | 原生 VMSS shutdown 存在；zone-wide 配置/执行 PendingConfiguration / AwaitingAuthorization；不能借 N-07 授权扩大范围。 | Native VMSS shutdown exists; zone-wide preparation/execution PendingConfiguration / AwaitingAuthorization; N-07 approval does not expand scope. |
+| N-07 | 配置 Validate 成功，User VMSS zone 2 当前匹配一实例；实际故障 PendingVerification / NotRun。User/System 各两节点分布 zone 2、3；单 User 节点损失一半容量，workload/存储/剩余容量未核验。 | Configuration Validate passed; User VMSS zone 2 currently matches one instance. Fault execution PendingVerification / NotRun. User/System each have two nodes in zones 2/3; losing one User node removes half its capacity, while workload/storage/spare-capacity evidence is missing. |
+| N-02, N-03 | catalog 有 VMSS 压力；模块仅实现单 VM，精确实例/agent/出站/容量 PendingDesign / PendingVerification，不压整池。 | Catalog includes VMSS pressure; module implements single-VM pressure only. Exact instance/agent/outbound/capacity PendingDesign / PendingVerification; no pool-wide pressure. |
+| S-03 | Blocked：当前 Standard_ZRS 无 geo planned failover 前置，不为补覆盖迁移 GRS/GZRS。 | Blocked: current Standard_ZRS lacks geo planned-failover prerequisites; do not migrate to GRS/GZRS merely for coverage. |
+| A-02 | 原生 flush 存在；独占/可重建与删除恢复 PendingVerification / AwaitingAuthorization，不默认清库。 | Native flush exists; exclusivity/reconstructibility and deletion/recovery PendingVerification / AwaitingAuthorization; no default flush. |
+| A-04 | Blocked：实际没有 geo links，无可 unlink 对象；不自动新增伙伴。 | Blocked: no actual geo links to unlink; do not automatically add a partner. |
+| C-01–C-05 | 单依赖连接、延迟、未知确认、DNS、协议限流尚未确认等价原生 Action；本轮不建 proxy/hook。 | No equivalent native Actions confirmed for single-dependency connectivity, latency, unknown acknowledgment, DNS or protocol throttling; no proxies/hooks in this phase. |
+| M-04 | 独立 replica 目标与等价原生 Action 未确认；HA standby 不替代。 | Independent replica target and equivalent native Action unconfirmed; HA standby is not a substitute. |
+| R-03, R-04 | Legacy Redis 有限 key/全库 flush 尚未确认 Workspace Action；服务数据面操作另审，不套 Managed Redis。 | No Workspace Action confirmed for Legacy Redis bounded-key/full-database flush; data-plane drills require separate review, not Managed Redis Actions. |
+| A-01, A-03, S-01, S-02 | 客户端断连/区域重定向、Blob 传输/secondary-read 未确认等价原生 Action；当前 ZRS 也无 secondary-read 前置。 | No equivalent native Actions confirmed for client disconnect/regional redirection or Blob transfer/secondary reads; current ZRS also lacks secondary-read prerequisites. |
+| B-04, H-03, H-04 | commit/settlement/checkpoint 时序或 consumer pause 未确认等价原生机制，状态禁用不能替代。 | Equivalent native commit/settlement/checkpoint timing or consumer-pause mechanisms are unconfirmed; entity disable is not a substitute. |
+| K-06 | 逐步增长泄漏模型未映射；固定 K-03 不等价，不编写模拟补本轮。 | Progressive memory-leak model is unmapped; fixed K-03 is not equivalent, and no simulation is added for this phase. |
+| V-05, V-06, V-07, V-08, V-10 | 精确 VM 路径/卷/进程原生机制未确认；不回退 classic 或安装 guest 模拟。 | Exact VM path/volume/process native mechanisms unconfirmed; no classic fallback or guest simulations. |
+| N-04, N-05, N-06, I-01 | 精确 node 网络/API partition、ASM control/data partition 未映射；PendingDesign，mesh 目标 AwaitingTarget。不改共享路由/NSG、不安装 mesh。 | Exact node network/API partition and ASM control/data partition unmapped; PendingDesign, with mesh AwaitingTarget. No shared route/NSG changes or mesh installation. |
+| M-03, P-03, S-04, B-05, H-05, H-06 | 服务 PITR/保护/geo 专项 Deferred，独立恢复、数据与生命周期授权待完成，不算本轮 Chaos 原生通过。 | Service PITR/protection/geo drills Deferred; separate recovery/data/lifecycle approval pending, not native Chaos passes in this campaign. |
+| D-01, D-02, V-01, V-02 | Unselected：Cosmos / RocketMQ 业务；已知故障机制不自动证明业务 durability。 | Unselected: Cosmos / RocketMQ business cases; known fault mechanisms do not establish business durability. |
+| L-01–L-03, G-01–G-03 | Future：无获授权目标；LB admin-state catalog 不覆盖所有 network/probe/Gateway 语义。 | Future: no approved targets; LB admin-state catalog does not cover every network/probe/Gateway semantic. |
+| E-01–E-03 | Deferred：实际业务流/SLO/不变量后续接入，不作为原生运行的新前置。 | Deferred: real business flows/SLOs/invariants come later, not new native-execution prerequisites. |
+
+**AKS 当前限制：** 操作端无法解析 private API，其既有 private endpoint TCP 路径亦不可达；近10分钟精确 cluster 的 KubeNodeInventory/KubePodInventory 返回0行，不能据此断言无 workload 或节点 Ready。先由已有获批私网执行端取得实际放置与恢复证据；本次不开放公网、不启用 Run Command、不新增临时身份或权限绕过。
+**Current AKS limitation:** The operator cannot resolve the private API, and its existing private-endpoint TCP path is also unreachable. Exact-cluster KubeNodeInventory/KubePodInventory queries returned zero rows over ten minutes; this proves neither absence of workloads nor Ready nodes. Obtain actual placement/recovery evidence through an existing approved private execution host; do not open public access, enable Run Command or add temporary identities/permissions to bypass the boundary.
+
+### 0.6 配置历史与最短原生流程 / Configuration history and minimal native workflow
+
+历史配置证据：25个推荐 Scenarios、初次发现0/检查模板 Configuration 0；显式 discover 后57资源，首批10个单 Action/明确目标配置，两批各16 create、已有目标 update/delete/replace 0。后续添加 P-02/N-07，共7 create、11 metadata update、0 delete/replace；发现69资源、12配置、7明确目标，12/12 Validate Succeeded，完整输入 replan 0。发现数不是授权数。六个初始 target-only custom roles 后补 User VMSS role；节点组 Reader 传播经有限重验，无扩大权限。
+Historical configuration evidence: 25 recommended Scenarios, initially zero discovered resources and zero Configurations in the inspected template; explicit discovery found 57 resources. Initial ten single-Action/explicit-target configurations were deployed in two batches of 16 creates, with zero existing-target updates/deletes/replacements. Adding P-02/N-07 required seven creates, 11 metadata updates and zero deletes/replacements; discovery reached 69 resources, 12 configurations and seven explicit targets, with 12/12 Validate Succeeded and full-input replan 0. Discovery count is not authorization count. Six initial target-only custom roles were followed by a User VMSS role; node-group Reader propagation was finitely revalidated without broader rights.
+
+初始配置名为 `m01-mysql-ha-failover`、`m02-mysql-restart`、`p01-postgresql-planned-failover`、`r01-legacy-redis-primary-reboot`、`r02-legacy-redis-secondary-reboot`、`b01-servicebus-send-disabled`、`b02-servicebus-receive-disabled`、`h01-eventhub-send-disabled`、`h02-eventhub-disabled`、`v09-private-vm-restart`；后补 `p02-postgresql-forced-failover`、`n07-single-user-node-shutdown`，Configuration 为 `approved-targets`。推荐库保留，不整套执行含 Load Testing/VMSS/数据库/runbook 的多 Action 模板。
+Initial configuration names are listed above; later additions are `p02-postgresql-forced-failover` and `n07-single-user-node-shutdown`, using Configuration `approved-targets`. Retain the recommendation library; do not execute whole multi-Action templates containing Load Testing/VMSS/databases/runbooks.
+
+| 步骤 / Step | 中文操作边界 | Corresponding English operational boundary |
+| --- | --- | --- |
+| 1 | 选已有 Workspace 单 Action Configuration，不用 classic Targets/capabilities；重查健康、目标、影响、权限与恢复。 | Select an existing Workspace single-Action Configuration, not classic Targets/capabilities; recheck health, targets, impact, permissions and recovery. |
+| 2 | 原生 Validate 必须最新 Succeeded 且解析到获批目标；动态实例/Pod 另核验。RequiresAttention 对照真实角色后有限重试，不自动 fixResourcePermissions。 | Latest native Validate must be Succeeded with approved resolved targets; dynamically verify instances/Pods separately. Investigate RequiresAttention against actual roles and retry finitely, never auto-fixResourcePermissions. |
+| 3 | 仅获明确授权的 operator/助手 Execute，串行；本轮已执行 Action duration 1分钟，不等于 outage。运行15分钟或恢复10分钟超限、越界即停。 | Only an explicitly authorized operator/assistant Executes, serially. Executed Actions used one-minute duration, not outage length. Stop on target escape, a 15-minute run limit or a ten-minute recovery limit. |
+| 4 | 用原生 report、Activity Log、既有 Monitor/events 观察；Cancelable 先取消再按原状态恢复本次实体，Discrete 不可撤销；不盲重发 Execute/failover。 | Observe native reports, Activity Log and existing Monitor/events; cancel Cancelable runs then restore only affected entities to prior state. Discrete actions are not undoable; never blindly resend Execute/failover. |
+| 5 | 确认真实作用、恢复、无残留，再下一故障；原生结果、影响/恢复、完整 infra/business 分栏。零目标/Skipped 不通过。 | Confirm actual impact, restoration and no residue before the next fault. Separate native, impact/recovery and full infra/business results. Zero-target/Skipped runs do not pass. |
+
+官方 `2026-08-01-preview` 路径：Configuration `POST .../execute`、`POST .../validate` 无 body；run `GET .../runs/{runId}`、`POST .../runs/{runId}/cancel`。仅供显式操作，不创建 Terraform run/provisioner 或猜 `runs/start`。HTTP 200 不等于 Validate 成功，depends_on 不保证 RBAC 已传播。
+Verified `2026-08-01-preview` paths: Configuration `POST .../execute` and `POST .../validate` have no body; runs use `GET .../runs/{runId}` and `POST .../runs/{runId}/cancel`. These are explicit operations, not Terraform run/provisioner resources or guessed `runs/start` APIs. HTTP 200 is not Validate success; depends_on does not guarantee RBAC propagation.
+
+<a id="1-recommendation-and-boundaries"></a>
+## 1. 故障机制与边界 / Mechanisms and Boundaries
+
+| 机制 / Mechanism | 中文含义 | Corresponding English meaning |
+| --- | --- | --- |
+| Workspace / Scenario | 当前推荐的新测试模型；service-direct/extension/agent 按 region、schema、资格和身份核验。 | Recommended model for new tests; qualify service-direct/extension/agent Actions by region, schema, eligibility and identity. |
+| 客户端模拟 / Client-path simulation | 云端测试 workload 的专用 hook/protocol proxy，只证明客户端韧性，不称 Azure 服务真实停机。 | Dedicated hooks/protocol proxies for cloud test workloads prove client resilience, not actual Azure service outages. |
+| 服务专项 / Service-native drill | PITR、保护恢复、区域 promotion 等独立操作，不冒充所选 Chaos Action。 | PITR, protection restoration and regional promotion are separate procedures, not the selected Chaos Action. |
+
+遵循 [Well-Architected 韧性测试 / reliability testing][waf]，明确证据层级。禁止混用 classic URN/targets/capabilities，未支持不自动回退。Workspace 与目标可跨 region，但实际 Action/资源约束须验证。
+Follow Well-Architected reliability testing and declare evidence levels. Never mix classic URNs/targets/capabilities or fall back automatically. Workspace and target regions may differ, subject to actual Action/resource constraints.
+
+强制边界：非生产、合成数据、一个目标/依赖的一种故障、无重叠运行；精确 allowlist、namespace/labels/实体/端点与所有间接消费者。canary 只限制流量，不限制 service-direct 影响。禁止共享 DNS/NSG/private endpoint/节点生命周期改动、订阅 Owner/Contributor、默认故障启动和未经授权的部署/扩缩容/flush。不删共享 DNS A record、不撤共享 SAS Listen、不启用 Redis access keys、不批量按名字 kill、不全盘填满、不默认装 Chaos Mesh。
+Mandatory boundaries: non-production synthetic data, one fault on one target/dependency, no overlapping runs, and exact allowlists/namespaces/labels/entities/endpoints plus all indirect consumers. Canary selection bounds traffic, not service-direct impact. No shared DNS/NSG/private-endpoint/node-lifecycle changes, subscription Owner/Contributor, default fault starts or unauthorized deployment/scaling/flush. Never delete shared DNS A records, revoke shared SAS Listen, enable Redis access keys, kill by name in bulk, fill whole disks or install Chaos Mesh by default.
+
+<a id="2-current-coverage-evidence-and-ownership"></a>
+## 2. 现有覆盖与归属 / Existing Coverage and Ownership
+
+配置声明、安装可用、真实故障影响、完整技术验收、业务验收分层记录。模块、mock、Ready、推荐模板、无漂移 plan 不替代下一层；历史安装/版本/检查不是本次实时重验。
+Record declared configuration, usable installation, actual impact, full technical acceptance and business acceptance separately. Modules, mocks, Ready states, recommendations and no-drift plans do not prove subsequent layers; historical installation/version/checks are not fresh verification.
+
+| 现有部分 / Existing area | 中文证据与缺项 | Corresponding English evidence and gaps |
+| --- | --- | --- |
+| [平台 / Platform](../main.tf)、[fixtures](../fixtures.tf) | 根模块管理 RG/私有 AKS/网络与 PaaS；模块存在不证明已部署/合格。Cosmos dev 不创建账户；RocketMQ Running 不证明 NameServer/Broker/存储与业务就绪。 | Root owns RG/private AKS/network and PaaS fixtures; module presence is not deployment/eligibility. Dev Cosmos creates no account; RocketMQ Running does not prove NameServer/Broker/store/business readiness. |
+| [Chaos 模块 / module](../modules/chaos/)、[stack](../stacks/chaos/) | UAMI、RG discovery、target-only 权限、单 Action 配置；默认关闭创建，无 run/schedule。existing-Workspace reference 未实现，不覆盖外部归属资源。 | UAMI, RG discovery, target-only rights and single-Action configurations; creation defaults off, no run/schedule. Existing-Workspace reference is unimplemented; do not overwrite externally owned resources. |
+| extension / [Pod 定义 / definitions](../modules/chaos/pods.tf) | 历史 extension 0.1.12、auto-upgrade off、federation/trust/operator grant、Deployments 1/1各两个、DaemonSet 4/4 Ready；五种有界 Action。安装/连接 Pending 不证明私有集群功能合格；当前目标另核验。 | Historical extension 0.1.12, auto-upgrade off, federation/trust/operator grant, two Deployments each 1/1 and DaemonSet 4/4 Ready; five bounded Actions. Installation/connection Pending does not qualify private-cluster functionality; recheck current targets. |
+| [验证模块 / Verification module](../modules/chaos-validation/) | opt-in 有限 HTTPS Jobs、streaming evidence、availability evaluator、Blob/SB reference clients、crash-safe ledger、manifest/recovery checks；声明的 Job 仍运行 probe.py。其他协议、真实应用、独立 ledger/完整 observer/通知未完成。 | Opt-in finite HTTPS Jobs, streaming evidence, availability evaluator, Blob/SB reference clients, crash-safe ledger and manifest/recovery checks; declared Job still runs probe.py. Other protocols, real apps, independent ledgers/full observers/notifications remain incomplete. |
+| [监控 / Monitoring](../modules/monitoring/)、[tests](../tests/)、[CI](../.github/workflows/terraform-validation.yml) | 已有固定工具静态验证；历史计数不当作新结果，policy applicability 未因整理自动解决。ingress/Argo CD 非 Chaos 必需；ACR/DNS/backend/backup/恢复默认排除。AGFC 不是 LB 目标。 | Fixed-tool static validation exists; historical counts are not fresh results, and policy applicability is not resolved by editing. Ingress/Argo CD are not Chaos prerequisites; ACR/DNS/backend/backup/recovery are excluded. AGFC is not an LB target. |
+
+历史复核工具：CLI 1.15.6（CI/runbook），AzureRM 4.55.0、AzAPI 2.14.0、Random 3.7.2、Kubernetes 2.38.0、Helm 2.17.0；[根约束 / root constraints](../version.tf)为 `>=1.9,<2.0`，不是精确 CLI pin。各 stage lockfile/测试 overrides 保留，不为本次文档升级 Provider/backend。旧“无模块/CI/Workspace”、旧版本/下载失败库存已被后续证据替代；旧环境 RG/网络/身份/命名/接口迁移风险仍须逐 state 审查。历史临时 IAM/guest 工具已清理、VM 原身份恢复；运行前重验，bootstrap checksum 修正不等于版本/state 迁移。
+Historically reviewed tools: CLI 1.15.6 (CI/runbook), AzureRM 4.55.0, AzAPI 2.14.0, Random 3.7.2, Kubernetes 2.38.0 and Helm 2.17.0. Root `>=1.9,<2.0` is not an exact CLI pin. Preserve stage lockfiles/test overrides; no Provider/backend upgrades in this documentation change. Older missing-module/CI/Workspace, version and download-failure inventories are superseded; older-environment RG/network/identity/naming/interface migrations still need state-specific review. Historical temporary IAM/guest tools were cleaned up and the original VM identity restored; requalify access. Bootstrap checksum correction is not a version/state migration.
+
+| 归属 / Owner | 中文职责 | Corresponding English responsibility |
+| --- | --- | --- |
+| Platform state | RG、AKS/VNet/ACR、PaaS/VM、监控；保留接口/address，关闭已启用资源可能删除。 | RG, AKS/VNet/ACR, PaaS/VM and monitoring; preserve interfaces/addresses, as disabling existing components can delete them. |
+| Cluster state | 已有私有 AKS 的可选 controller/GitOps、namespace、脚本和获批 Job；建 Job 即运行流量，须授权。 | Optional controllers/GitOps, namespaces, scripts and approved Jobs on existing private AKS; Job creation starts traffic and needs approval. |
+| Chaos state | Workspace/UAMI、discovery grants、Action 权限、Scenarios/configurations；只配置不启动。 | Workspace/UAMI, discovery grants, Action rights and Scenarios/configurations; configuration only, no execution. |
+| 安装/恢复操作者 / Installer/recovery operator | extension、subscriber/federation/connection/operator grant 外部归属，不重复；恢复/清理独立授权。 | Externally owned extension/subscriber/federation/connection/operator grants are not duplicated; recovery/cleanup requires separate approval. |
+
+环境/stage 使用独立 state/backend key/身份，tfvars/CLI workspace 不是隔离。根默认 local state 须保护并互斥；团队/云端 remote backend 独立引导、Entra认证、锁/备份/网络保护，迁移另审。不故障化 backend/evidence/backup，不用空 state、state rm、force-unlock/destroy 掩盖问题。
+Use separate environment/stage state/backend keys and identities; tfvars/CLI workspaces are not isolation. Protect and serialize the root's default local state. Team/cloud remote backends require independent bootstrap, Entra authentication, locking/backups/network protection and separately reviewed migration. Never fault backend/evidence/backup storage or hide problems with empty state, state rm, force-unlock or destroy.
+
+### 2.1 Action 与参数契约 / Action and parameter contract
+
+以下 catalog 标识不等于订阅资格；实施前读取目标 Workspace region 的完整 schema/权限/持续时间，固定 `2026-08-01-preview`，不用猜测字段。
+Catalog identifiers are not subscription eligibility. Retrieve full schema/permissions/duration for the Workspace region before implementation, retain `2026-08-01-preview`, and never guess fields.
+
+| 资源 / Resource type | Action ID | 中文语义与关键参数 | Corresponding English semantics and parameters |
 | --- | --- | --- | --- |
-| P-01 / P0 | As a transactional user, I retain acknowledged writes during a planned primary transition. Use `PlannedFailover` under load. | One dedicated HA server; one transition; proposed 5-minute duration subject to schema. Set `RestoreOnStop=false`; require eligibility rather than silently skipping. | HA RTO and integrity pass; pool reconnects; existing transactions are safely completed/retried/reconciled. Verify primary role and restored HA before another transition. |
-| P-02 / P1 | As a user, I recover from an abrupt primary transition even with in-flight transactions. Use `ForcedFailover` only after P-01 recovers cleanly. | Same dedicated fixture; a new, separately authorized run. Capture WAL backlog and long-running transactions first. | Zero lost acknowledged committed writes for the healthy HA scenario; unknown commits reconciled; replay time measured. Wait for restored HA and application SLO; authorize failback separately. |
-| P-03 / P1 | As an operator, I can restore corrupted synthetic data. Use native PITR to a new isolated server. | Chosen restore time within retained/available backups; no source replacement. | Validate restored records, schema, application compatibility, private networking, identities, RTO, and restore-point gap. Remove only approved temporary fixtures after evidence retention. |
+| MySQL / `Microsoft.DBforMySQL/flexibleServers` | `microsoft-mysql-failover/1.0` | Cancelable；必填 RestoreOnStop；健康 HA，恢复旧主仅尝试不保证。 | Cancelable; required RestoreOnStop, healthy HA; returning to the old primary is an attempt, not guaranteed rollback. |
+| MySQL / 同上 / same | `microsoft-mysql-restart/1.0` | Discrete；一次重启，无 undo。 | Discrete; one restart, no undo. |
+| PostgreSQL / `Microsoft.DBforPostgreSQL/flexibleServers` | `microsoft-azurepostgresql-failover/1.0` | Cancelable；FailoverMode PlannedFailover/ForcedFailover；可选 RestoreOnStop/SkipIneligibleServers；非HA/replica不合格。 | Cancelable; FailoverMode PlannedFailover/ForcedFailover; optional RestoreOnStop/SkipIneligibleServers; non-HA/replica targets ineligible. |
+| Legacy Redis / `Microsoft.Cache/redis` | `microsoft-azureclusteredcacheforredis-reboot/1.0` | Discrete；RebootType PrimaryNode/SecondaryNode/AllNodes；cluster 才用明确 ShardId，不套 Managed Redis。 | Discrete; RebootType PrimaryNode/SecondaryNode/AllNodes; explicit ShardId only for clustered caches, not Managed Redis. |
+| Managed Redis / `Microsoft.Cache/redisEnterprise` | `microsoft-managedredis-flushdatabase/1.0` | Discrete；DatabaseName；可能清空全部 geo-linked caches。 | Discrete; DatabaseName; may erase every geo-linked cache. |
+| Managed Redis / 同上 / same | `microsoft-managedredis-forceunlink/1.0` | Discrete；DatabaseName/LinkedDatabaseResourceIds；拓扑变化，无自动 re-link。 | Discrete; DatabaseName/LinkedDatabaseResourceIds; topology change, no automatic re-link. |
+| Storage / `Microsoft.Storage/storageAccounts` | `microsoft-storageaccount-plannedfailover/1.0` | Discrete；全账户、合格 geo 冗余、初始同步完成、两区可用。 | Discrete; account-wide, eligible geo redundancy, completed initial sync, both regions available. |
+| Service Bus / `Microsoft.ServiceBus/namespaces` | `microsoft-servicebus-changequeuestate/1.0` | Cancelable；queues/desiredState：Active/Disabled/SendDisabled/ReceiveDisabled。 | Cancelable; queues/desiredState: Active/Disabled/SendDisabled/ReceiveDisabled. |
+| Service Bus / 同上 / same | `microsoft-servicebus-changesubscriptionstate/1.0` | Discrete；topic/subscriptions/desiredState Active或Disabled；显式恢复。 | Discrete; topic/subscriptions/desiredState Active or Disabled; explicit restoration. |
+| Service Bus / 同上 / same | `microsoft-servicebus-changetopicstate/1.0` | Discrete；topics/desiredState Active或Disabled；显式恢复。 | Discrete; topics/desiredState Active or Disabled; explicit restoration. |
+| Event Hubs / `Microsoft.EventHub/namespaces` | `microsoft-eventhub-changeeventhubstate/1.0` | Cancelable；eventhubs/desiredState Active/Disabled/SendDisabled；无 ReceiveDisabled。 | Cancelable; eventhubs/desiredState Active/Disabled/SendDisabled; no ReceiveDisabled. |
+| Cosmos / `Microsoft.DocumentDB/databaseAccounts` | `microsoft-documentdb-offlineregion/1.0` | Cancelable；RegionName 是 display name，核对API/读写拓扑。 | Cancelable; RegionName is a display name; qualify API/read-write topology. |
+| VM / `Microsoft.Compute/virtualMachines` | `microsoft-compute-restart/1.0` | Discrete；重启不是 broker 恢复证明。 | Discrete; restart does not prove broker recovery. |
+| VMSS / `Microsoft.Compute/virtualMachineScaleSets` | `microsoft-virtualmachinescaleset-shutdown/1.0` | Cancelable；Zones/GracefulShutdown；可能命中 zone 内全部实例。 | Cancelable; Zones/GracefulShutdown; may affect every matching instance in the zone. |
+| VM agent；VMSS仅catalog / VM agent; VMSS catalog-only | `microsoft-compute-cpuPressure/1.0` | Continuous；实际区域 pressureLevel 1–100、必填 duration；单合格 VM 默认≤50。 | Continuous; regional pressureLevel 1–100 and required duration; one qualified VM, default ≤50. |
+| VM agent；VMSS仅catalog / VM agent; VMSS catalog-only | `microsoft-compute-physicalMemoryPressure/1.0` | Continuous；pressureLevel 1–99、必填 duration；不是逐步泄漏。 | Continuous; pressureLevel 1–99 and required duration; not a progressive leak. |
 
-WAL replay and workload can extend failover beyond typical timings. Same-zone HA cannot establish zone-loss resilience; the proposed HA RPO does not apply to asynchronous cross-region replica promotion.
+模块 allowlist 为14个 service-direct + 2个单VM agent压力，不是整个官方 catalog；UK South schema 的 `pressureLevel`/`duration` 大小写保留，不能以 URN 替换 Action ID。compute shutdown/redeploy/delete/hibernate 不等价；未确认 Managed Redis reboot。
+The module allowlists 14 service-direct plus two single-VM agent-pressure Actions, not the entire official catalog. Preserve UK South schema casing for `pressureLevel`/`duration`; do not substitute URNs for Action IDs. Compute shutdown/redeploy/delete/hibernate are not interchangeable; no Managed Redis reboot is confirmed.
 
-### 5.3 Azure Cache for Redis
+配置守则：service-direct whole-minute duration 1–5，Discrete 也必填但非 outage/回滚承诺。实体数组 queues/topics/subscriptions/eventhubs/linked IDs 按 schema JSON-array 编码。`resourceTargeting` 不混旧 filters/exclusions：同类别 OR、非空类别间 AND、排除优先，空类别不限制；这不是 Pod labels AND 规则。明确资源ID并每次对比实际解析/排除名单，更新保留完整参数。destructive opt-in 不等于执行许可，代码危险列表非完整风险分类。
+Configuration rules: service-direct whole-minute durations 1–5, required even for Discrete Actions but not an outage/rollback promise. Encode entity arrays queues/topics/subscriptions/eventhubs/linked IDs per schema. Use `resourceTargeting`, not mixed old filters/exclusions: OR within a category, AND across nonempty categories, exclusions win, empty categories do not restrict. This differs from Pod-label AND matching. Require exact resource IDs, compare resolved/excluded lists before each run and preserve full parameters on updates. Destructive opt-in is not execution permission, and the code's destructive list is not a complete risk classification.
 
-Assumption: "Azure Cache" means **Azure Cache for Redis**, not Azure CDN or another cache product. Confirm the product and SKU. Reboot coverage below applies to Basic/Standard/Premium `Microsoft.Cache/redis`; replica-specific tests require a replica. Enterprise is not this reboot path. See [cache administration][cache-admin].
+<a id="3-workload-and-measurement-design"></a>
+## 3. 分阶段验收与度量 / Phase-specific Acceptance and Measurement
 
-| ID / priority | User story, hypothesis, and fault | Scope / exposure | Acceptance and recovery |
-| --- | --- | --- | --- |
-| R-01 / P0 | As a cache-aside reader, I remain served during primary reboot using reconnect/fallback. Use `RebootType=PrimaryNode`. | One dedicated eligible cache; one reboot. For clustering, one explicit shard first; deliberately route selected keys there. | Cache fallback contract, bounded source load, topology refresh, and integrity pass. Verify cache availability and warm-up; no promise of cache-write durability. |
-| R-02 / P1 | As a reader, I am not substantially disrupted by replica reboot. Use `SecondaryNode`. | Dedicated Standard/Premium target with a replica; one reboot; no simultaneous primary fault. | Control/application stay within agreed SLO; replica rejoins; redundancy restored. Basic is Blocked for this case, not a successful skip. |
-| R-03 / P1 | As a user, I survive cold-cache misses without overwhelming the database. Expire/invalidate only approved synthetic keys through a test hook. | Bounded hot-key set; one workload; no whole-cache flush by default. | Bounded refill concurrency, correct values, warm-up target, and healthy source of truth. Disable the hook and rebuild only test keys. |
-| R-04 / P1, destructive | Legacy Redis 全数据库 flush 后，明确可重建的测试数据恢复。没有已确认的 legacy Workspace flush Action；单独评审受控 data-plane native drill，不伪造 control-plane Action/log。 | 专用且完全独占、可重建数据库；确认产品/cluster/数据库支持及所有消费者，准确 flush 范围。TLS/Entra 身份不降级，禁止启用 access keys；认证/恢复待核验为 PendingVerification，删除许可为 AwaitingAuthorization，未完成不运行。不得触及 sessions 或唯一持久数据。 | flush 实际生效、非目标不受损；明确预期删除的测试 keys，按已记录数据重建并验证读写/版本。仅删少量 keys 属 R-03，不算此 case；flush 无 undo，恢复失败必须报 Failed。 |
+### 3.1 初始技术与 Pod 参数 / Initial technical and Pod bounds
 
-Exclude `AllNodes` from the initial wave. Reboot is not a cache flush and can still lose recent data. Existing Azure Cache for Redis deployments can be tested, but Microsoft recommends migration to Managed Redis; migration itself is not part of this plan.
+网络建议 +100ms/1% loss/60秒；Pod guards：≤25%、≤60秒、CPU 1–2 cores、memory 1–128MB（memoryConsumptionMegabytes）、latency 1–500ms、loss 1–10%。先核百分比取整和最小可行效果。VM/node CPU 从50%逐级，95–100%、memory90%、disk exhaustion 仅专用可恢复目标另审，不能为满载名称放宽 guards。
+Proposed network start: +100ms/1% loss/60 seconds. Pod guards: ≤25%, ≤60 seconds, CPU 1–2 cores, memory 1–128MB (memoryConsumptionMegabytes), latency 1–500ms and loss 1–10%. Check rounding and minimum practical effects first. VM/node CPU starts at 50%; 95–100% CPU, 90% memory and disk exhaustion require separate review on dedicated recoverable targets. Saturation names do not relax guards.
 
-### 5.4 Azure Managed Redis
+完整 infra 建议每路径每秒至少一有效观测，恢复10个连续一分钟窗口满足约定健康/读写与每窗口无失败 control；记录最小样本、每服务恢复预算/数据量/TTL/retention/lag数值。observer stale>15秒、未授权影响、数据异常、System/恢复受损、匹配/成本超限即停。目标预期高CPU不套非目标80%阈值。
+Full infra proposes at least one valid observation per path per second and ten consecutive one-minute recovery windows meeting agreed health/read-write criteria with failure-free control windows. Record minimum samples, service recovery budgets, data volumes, TTL/retention and numeric lag caps. Stop for observer staleness >15 seconds, unauthorized impact, data anomalies, System/recovery damage or match/cost overrun. Expected target CPU pressure does not use the non-target 80% threshold.
 
-Verify actual product/SKU even though the resource type is `redisEnterprise`. Determine whether data is disposable cache data or non-reconstructible sessions/state. Do not promise zero data loss from asynchronous Redis replication. See [Managed Redis architecture guidance][amr-waf] and [active geo-replication][amr-geo].
+### 3.2 后续真实业务流 / Later real business flows
 
-| ID / priority | User story, hypothesis, and fault | Scope / exposure | Acceptance and recovery |
-| --- | --- | --- | --- |
-| A-01 / P0 | As a cache-aside user, I remain served when the Managed Redis client path disconnects. Apply C-01 with a cluster-aware client. | Selected canary and dedicated database path for 60 seconds; no service-node reboot claim. | Fallback, deadlines, topology refresh, warm-up, and source integrity pass. Remove the injection and prove real requests succeed. |
-| A-02 / P1, destructive | As a user, I survive complete loss of reconstructible cache data. Use the flush database Action. | Dedicated disposable instance/database only; one flush. If geo-linked, ALL linked caches must be disposable and authorized. Unverified ownership is PendingVerification; pending deletion approval is AwaitingAuthorization. Confirmed non-reconstructible data is a safety Blocked condition; do not flush. | Approved cache fallback and source load limits pass; rebuild from source and verify warm-up. Cancellation cannot restore erased data. Never run against the only copy of durable business/session data. |
-| A-03 / P1, regional | As a regional user, I redirect to a healthy geo-linked instance when my local cache path is unavailable. Isolate only the regional test clients, then execute the application's endpoint/identity redirection. | Dedicated eligible active geo-replication group; supported HA/SKUs/version/modules, matching configurations, and alternate private access verified. | Detection-to-recovery RTO, application-measured freshness/RPO, concurrent-write invariants, and healthy alternate region. Restore the path; verify convergence before traffic returns. This is regional client isolation, not an Azure region failure. |
-| A-04 / P2, topology-changing | As an operator, I can remove an unavailable geo member without destabilizing healthy members. Use force-unlink with explicit linked database IDs. | Dedicated disposable group only; separate authorization for unlink and recovery lifecycle changes. | Healthy members remain usable; memory/replication behavior recorded. Follow the documented recovery procedure, including deletion/recreation of the affected test member where required; verify rejoin/convergence before returning traffic. |
+| 对象 / Service | 中文业务与完整性契约 | Corresponding English business/integrity contract |
+| --- | --- | --- |
+| MySQL / PostgreSQL | 幂等订单、同事务库存、读已确认订单；独立 attempt/ack/unknown，唯一 effect，无半事务。未知 commit 按 key 先核对，不盲重写。 | Idempotent order, inventory in the same transaction, reads of acknowledged orders; independent attempt/ack/unknown, unique effects and no half-transactions. Reconcile unknown commits by key before rewriting. |
+| 两种 Redis / Both Redis products | cache-aside、更新真值/失效回填；比对版本/新鲜度、hit/miss、后端负载，不以缓存当唯一持久数据。 | Cache-aside, source updates and invalidation/refill; compare versions/freshness, hit/miss and backing load, without treating cache as sole durable data. |
+| Blob | 唯一 operation 上传/下载与中断重试；hash/length/ETag/version/ack 账本，无重复逻辑上传。 | Unique-operation upload/download and interrupted-transfer retry; hash/length/ETag/version/ack ledger, no duplicate logical uploads. |
+| Service Bus | 发布订单事件→PeekLock→提交业务effect→settle；核对ack、attempt、唯一effect、outstanding/DLQ；不用ReceiveAndDelete验证持久业务。 | Publish order→PeekLock→commit effect→settle; reconcile ack, attempts, unique effects and outstanding/DLQ. Do not use ReceiveAndDelete for durable business verification. |
+| Event Hubs | 已知partition唯一事件→提交effect→checkpoint；核对ack/unknown、offset/sequence、durable checkpoint；不承诺全局顺序/exactly-once。 | Unique events on known partitions→commit effect→checkpoint; reconcile ack/unknown, offsets/sequences and durable checkpoints; no global ordering/exactly-once guarantee. |
+| Cosmos（后续选择） / Cosmos if selected | 明确partition key、并发/幂等、consistency/session/ETag、write-region/conflict，核对已确认/未知与新鲜度。 | Explicit partition key, concurrency/idempotency, consistency/session/ETag, write-region/conflicts; reconcile acknowledged/unknown outcomes and freshness. |
+| RocketMQ（后续选择） / RocketMQ if selected | 固定ack/flush/replication契约，effect先提交后ack，核对broker/store、重投/retry/DLQ与唯一持久effect。 | Freeze ack/flush/replication guarantees, commit effects before ack, and reconcile broker/store health, redelivery/retry/DLQ and unique durable effects. |
+| AKS | 故障期间实际应用流与Pod/node/events、请求、账本、放置容量/恢复关联。 | Correlate actual application flows with Pod/node/events, requests, ledgers, placement/capacity and recovery during faults. |
 
-Force-unlink is a recovery/topology action, not a substitute for inducing a real outage. Client isolation does not interrupt service-to-service replication; do not claim it proves metadata accumulation during a true regional loss.
+这些是参考流，实施前映射到真实接口/不变量；只有SDK直连时仅报告客户端库韧性。业务与独立验证 Job 在云端 AKS，ConfigMap脚本+固定已验证镜像、requests/limits、deadline/有限重试/清理，最小workload identity与secret引用，不挂host/Docker socket或放宽全局策略。proxy/hook须实际影响协议/持久连接/池及全部相关端点，保持TLS；control/ledger/recovery置故障外。默认900秒Job装不下15分钟基线+暴露+10分钟恢复，须获批有限分阶段并连续观察；间隙是缺证据。HTTPS socket timeout不是硬端到端deadline。
+These are reference flows; map them to real interfaces/invariants before execution. SDK-only direct clients establish client-library resilience only. Run application and independent verification Jobs in cloud AKS using ConfigMap scripts, pinned validated images, requests/limits, deadlines, finite retries/cleanup, least-privilege workload identities and secret references; no host/Docker sockets or global policy relaxation. Proxies/hooks must affect actual protocols/persistent connections/pools/all relevant endpoints while retaining TLS. Keep control/ledger/recovery outside the fault. A default 900-second Job cannot fit a 15-minute baseline plus exposure plus ten-minute recovery; use approved finite phases with continuous observations, treating gaps as missing evidence. HTTPS socket timeout is not a hard end-to-end deadline.
 
-The Geo Replication Healthy metric is a health indicator, not a numeric lag measurement. Measure freshness using application version markers. Managed Redis export/import recovery is not included by default: current guidance notes limitations with firewalled/private-link storage, and this plan must not weaken the network boundary to enable it.
+### 3.3 待评审业务指标 / Proposed business acceptance targets
 
-### 5.5 Azure Storage account
+以下是项目建议，不是 Microsoft SLA，也不是已获批服务保证；实际执行前确认。当前原生阶段不以这些业务指标为额外前置。
+These are project proposals, not Microsoft SLAs or approved service guarantees; confirm before execution. They are not additional prerequisites for the current native phase.
 
-Initial business scope is **Blob Storage**. Add explicit workload variants for Azure Files, ADLS Gen2, Queue, or Table if used; Blob results do not cover those protocols/semantics.
+| 指标 / Dimension | 中文建议 | Corresponding English proposal |
+| --- | --- | --- |
+| 基线 / Baseline | 15分钟、至少1000逻辑业务操作、成功≥99.9%且符合应用latency SLO；低流量延长。 | 15 minutes, ≥1,000 logical business operations, ≥99.9% success within application latency SLO; extend low-volume runs. |
+| 模拟 / Simulation | 初始60秒，干净恢复后才180秒；一个canary/依赖。同步deadline建议10秒，所有层合计最多3次重试，指数退避+jitter。 | Start at 60 seconds, expand to 180 only after clean recovery; one canary/dependency. Proposed synchronous deadline ten seconds, at most three retries across all layers with exponential backoff/jitter. |
+| Cache fallback | 后端容量已证实时成功≥99%、p95≤2倍基线；否则明确有界失败。路径恢复后重连≤120秒，10分钟hit ratio回到基线±10个百分点。 | With verified backing capacity, ≥99% success and p95≤2× baseline; otherwise explicit bounded failure. Reconnect ≤120 seconds after path restoration and hit ratio within ten percentage points of baseline in ten minutes. |
+| 硬依赖中断 / Hard dependency outage | 允许需要该依赖的操作在deadline内明确失败或按契约持久排队，无虚假成功；control仍满足基线。 | Dependent operations may explicitly fail within deadline or queue durably under contract; no false success, with control meeting baseline. |
+| 短故障恢复 / Short-fault recovery | 移除模拟后120秒内回SLO，并持续10个一分钟窗口；不替代从故障开始计的RTO。 | Return to SLO within 120 seconds after simulation removal and sustain ten one-minute windows; this does not replace RTO from incident initiation. |
+| DB HA | 建议端到端RTO≤180秒，已确认committed事务零丢失；核对真实负载、WAL/backlog、连接池。 | Proposed end-to-end RTO≤180 seconds and zero lost acknowledged committed transactions; qualify realistic load, WAL/backlog and connection pools. |
+| 消息 / Messaging | 对账所有ack，无重复committed业务effect；恢复后10分钟排空有限backlog，遵循获批TTL/DLQ。 | Reconcile every ack, no duplicate committed business effects; drain bounded backlog within ten minutes under approved TTL/DLQ policy. |
+| Storage planned | 独立3小时maintenance window，单次transition建议≤90分钟，按大小/features确认；无已确认对象丢失，failback另授权。 | Separate three-hour maintenance window; proposed ≤90 minutes per transition, qualified by size/features; no acknowledged object loss, with failback separately approved. |
+| PITR/geo | 每目标确认RTO/RPO、备份/复制、数据量；异步复制/restore不默认零RPO。 | Agree per-target RTO/RPO, backup/replication and data volume; no default zero RPO for async replication/restoration. |
 
-See [DR guidance][storage-dr], [planned failover behavior][storage-planned], and [initiation prerequisites][storage-start].
+业务成功率=满足同步/持久接收契约的逻辑操作÷相关attempt，不是HTTP2xx/SQL ping/内存排队/Action成功。retry amplification=下游全部attempt÷原逻辑操作；另固定offered rate观察attempt rate。完整性=无丢ack持久effect/重复committed effect/破坏不变量，未解unknown为Inconclusive。RTO从注入/事件开始至持续SLO恢复；RPO以已确认数据缺口的数量/时间实测。每窗口有最小样本，缺窗口不能靠总p95通过。1000次的99.9%至多一失败，只是有限验收不是长期SLA认证；不从不足流量造p99。分别记录start/impact/alert/decision/recovery action/dependency/SLO/backlog，DR RTO含检测决策。
+Business success rate is logical operations meeting synchronous/durable-acceptance contracts divided by relevant attempts, not HTTP2xx/SQL pings/in-memory queues/Action success. Retry amplification is all downstream attempts divided by original operations; freeze offered rate and separately observe attempt rate. Integrity means no missing acknowledged durable effects, duplicate committed effects or broken invariants; unresolved unknowns are Inconclusive. RTO runs from injection/incident to sustained SLO recovery; measure RPO as acknowledged data gaps in counts/time. Require minimum samples per window; aggregate p95 cannot pass missing windows. At 1,000 operations, 99.9% permits at most one failure, a finite check rather than long-term SLA certification; do not fabricate p99 with insufficient traffic. Record start/impact/alert/decision/recovery action/dependency/SLO/backlog separately; DR RTO includes detection and decision.
 
-| ID / priority | User story, hypothesis, and fault | Scope / exposure | Acceptance and recovery |
-| --- | --- | --- | --- |
-| S-01 / P0 | As an uploader, I either complete a verified upload or receive a truthful bounded failure during connection reset/transient errors. Apply C-01/C-03/C-05 to the Blob application path. | Dedicated container/prefix and selected canary; bounded operations and 60-second exposure. | Hash/length and acknowledgment ledger reconcile; no duplicate logical object or false completion. Remove injection, reconcile interrupted uploads, and validate reads/writes. |
-| S-02 / P1 | As a read-only user, I can use the secondary endpoint when the primary client path is unavailable. Use application-controlled read fallback. | Dedicated RA-GRS/RA-GZRS account; selected reads only; confirm secondary service support and private access. | Reads respect agreed freshness; secondary is not used for writes; a not-yet-replicated object is handled correctly rather than declared lost. Restore primary path and verify application return. |
-| S-03 / P1, account-wide DR | As an operator, I can move a geo-redundant account and restore service with no acknowledged object loss. Use the planned failover Action. | Dedicated account only, including every service/entity in it; synchronization complete; both regions healthy. Reserve the separate 3-hour window. | Measure end-to-end RTO; reconcile acknowledged objects and private DNS/access. After healthy verification, separately authorize planned failback and confirm original redundancy and replication. Stop cannot undo this Discrete transition. |
-| S-04 / P1, recovery | As a user/operator, I can recover a deleted or overwritten synthetic blob using configured protection. Use version/soft-delete recovery, not regional failover. | Dedicated protected fixture; verify actual enabled protection and retention first. | Restore intended content/version and hash within agreed RTO; do not overwrite newer valid business data. Clean up only explicitly selected test objects. |
+<a id="4-common-client-path-cases"></a>
+## 4. 通用客户端补充场景 / Common Client-path Additions
 
-Do not fail over a Terraform backend account, backup repository, shared account, or account carrying recovery/observability dependencies. LRS/ZRS alone cannot support regional account failover.
+保留原英文 C-family 五项；按实际产品/协议分别运行。均为后续模拟，不是已确认原生 Action；Pod-wide 网络影响全部容器/目的地址，不等价单依赖。身份refresh可未来以专用身份另审，不撤共享权限/生产凭据。
+Retain all five former English C-family cases, running separately per actual product/protocol. They are later simulations, not confirmed native Actions. Pod-wide networking affects all containers/destinations and is not single-dependency isolation. Future identity-refresh drills require dedicated identities, not shared-permission/production-credential revocation.
 
-Review the account's feature support matrix before S-03, including HNS, change feed/object replication, policies, and every storage service present. For Azure Files, stop all application/client share activity before failover and validate remount/reconnect afterward.
+| ID / 优先级 / Priority | 中文场景、边界与验收 | Corresponding English scenario, boundaries and acceptance |
+| --- | --- | --- |
+| C-01 / P0 | 单canary→单依赖的已有/新连接中断60秒，control不受影响；deadline/重试有界、无假成功/重复effect，移除后必要时仅重建受影响测试连接并实测恢复。 | Black out established/new connections from one canary to one dependency for 60 seconds, leaving control unaffected; bounded deadlines/retries, no false success/duplicate effects. Remove fault, rebuild only affected test connections if needed and prove recovery. |
+| C-02 / P0 | 单路径+100ms、+500ms分别运行60秒，不改共享路由；池/worker队列有界，timeout/circuit breaker合契约，记录p95/p99/重试，移除后队列池恢复。 | Separate +100ms and +500ms 60-second runs on one path, no shared-route changes; bounded pools/worker queues, contractual timeouts/circuit breakers, p95/p99/retries recorded, queues/pools restored after removal. |
+| C-03 / P0 | 有限合成请求到达服务后切断响应/settlement，必要时protocol-aware hook；核对全部unknown、每ID唯一effect、无ack持久丢失，移除后全量对账。 | Let bounded synthetic requests reach the service, then interrupt responses/settlement using protocol-aware hooks where needed; reconcile every unknown, unique effects per ID and no lost acknowledged durable work, then remove and reconcile all IDs. |
+| C-04 / P1 | 仅测试workload依赖hostname解析失败60秒，分别测试复用/新连接；依赖告警、有界失败、重新解析/连接，恢复测试局部DNS，旧socket正常不证明DNS覆盖。 | Fail only test-workload dependency hostname resolution for 60 seconds, testing reused/new connections; dependency alerts, bounded failures and re-resolution/reconnect. Restore test-local DNS; healthy old sockets do not prove DNS coverage. |
+| C-05 / P1 | 按真实SDK错误模拟限流/资源限制，429/503仅适用HTTP，不伪造SQL/Redis/AMQP HTTP错误；仅重试可重试项、尊重server delay、并发有界、无OOM/storm，移除排空恢复。 | Simulate SDK-correct throttling/resource limits; 429/503 only for applicable HTTP APIs, never fabricated SQL/Redis/AMQP HTTP errors. Retry eligible errors only, honor server delay, bound concurrency, prevent OOM/storms, remove, drain and recover. |
 
-Planned failover requires both regions available, can take about an hour, and is **not** a test of recovery when the primary storage region is truly unavailable. Geo-redundancy is retained, but effective redundancy can change during the transition (for example GZRS to GRS) and return on planned failback. Verify actual state; do not let Terraform revert it mid-drill.
+<a id="5-service-specific-test-cases"></a>
+## 5. 中文主线与保留的服务用例 / Chinese-led and Retained Service Cases
 
-Unplanned account failover is excluded from default execution: it can lose unreplicated writes, remove geo-redundancy, and introduce inconsistencies. Add it only as a separately approved disposable-environment drill with an explicit data-loss budget and re-protection procedure.
+以下先按用户中文资源顺序列VM、AKS、MySQL、Storage、Legacy Redis、Event Hubs、LB/Gateway，再列英文原有补充的PostgreSQL、Managed Redis、Service Bus、Cosmos和RocketMQ业务。稳定Case ID不改；所有行中文/英文同步，继承§0.2/§3/§7/§9。§0.5才是当前执行状态，以下机制/验收不是已运行声明。
+The order follows supplied Chinese resources first: VM, AKS, MySQL, Storage, Legacy Redis, Event Hubs and LB/Gateway; then retained English additions: PostgreSQL, Managed Redis, Service Bus, Cosmos and RocketMQ business. Stable Case IDs are unchanged. Every row is synchronized bilingually and inherits §0.2/§3/§7/§9. Current execution status is in §0.5; definitions below do not claim execution.
 
-### 5.6 Azure Service Bus
+### 5.1 VM 基础设施 / VM infrastructure
 
-Use explicit dedicated queue/topic/subscription names and finite backlog/message TTL. Durable business events use PeekLock, not ReceiveAndDelete. See [message settlement/locks][sb-locks], [Geo-Replication][sb-georep], and [Geo-DR][sb-geodr].
+V-03–V-10 不替代broker业务V-01/V-02；复用VM时仍核对所有消费者/数据/中断。OS、broker持久数据、backend/evidence/恢复盘不作为disk目标，jumpserver排除。
+V-03–V-10 do not substitute for broker business V-01/V-02. Reusing a VM still requires all consumer/data/interruption checks. Exclude OS, broker durable data, backend/evidence/recovery disks and jumpservers.
 
-| ID / priority | User story, hypothesis, and fault | Scope / exposure | Acceptance and recovery |
-| --- | --- | --- | --- |
-| B-01 / P0 | As a producer, I do not lose accepted business work when sends are disabled. Use queue state `SendDisabled`. | One dedicated queue, explicit `queues`; proposed 60-second duration subject to schema. | Sends fail truthfully or enter an approved durable outbox; existing messages remain consumable. Verify actual state recovery, explicitly restore the recorded state if needed, replay outbox, and reconcile IDs. |
-| B-02 / P0 | As a consumer/operator, I recover from paused receives without backlog loss. Use `ReceiveDisabled`. | One dedicated queue for 60 seconds, with bounded publishers. | Backlog grows within its cap; alerts fire; send behavior verified; recovery drains without duplicate business effects. Restore recorded queue state and prove send/receive/settlement. |
-| B-03 / P1 | As a subscriber, I recover after a topic or subscription is disabled. Execute separate runs of the topic and subscription state Actions. | Explicit topic/subscription list only; Discrete disable; planned 60-second hold managed by the operator, then explicit restoration. | Verify actual accepted/rejected work and affected subscriptions; no assumption that a disabled subscription accumulates backlog. Restore the original state even if the run is canceled; reconcile deliveries and DLQ. |
-| B-04 / P0 | As an event processor, I avoid duplicate effects after connection/lock/settlement loss. Interrupt the selected consumer after business commit but before completion; also test handler delay beyond lock-renewal budget. | Bounded message cohort; canary consumer only; no global lock-setting change. | Redelivery handled idempotently; duplicate attempts allowed but only one effect; DLQ reasons reconcile. Remove fault, drain or explicitly dead-letter test messages, and verify lock renewal. |
-| B-05 / P2, regional | As an operator, I recover messaging across regions with a known data contract. Prefer a native planned Geo-Replication promotion. | Dedicated eligible Premium namespace with synchronized secondary; current region support, identities, and private access verified. Not a queue-state Chaos Action. | Stable namespace hostname reconnects; planned promotion preserves acknowledged message data/state; end-to-end RTO and message ledger pass. Re-synchronize and authorize reverse promotion separately. |
+| ID / Priority | 中文场景、前置与验收恢复 | Corresponding English scenario, prerequisites and recovery acceptance |
+| --- | --- | --- |
+| V-03 / P1 | CPU pressure原生Continuous；单agent-qualified VM、OS/identity/outbound/headroom核验，默认≤50%，更高另opt-in/授权。实测CPU达批准范围、非目标/观察可用；结束效果消失、CPU/guest/技术读写恢复，未达效果不通过。 | Native Continuous CPU pressure; one agent-qualified VM with OS/identity/outbound/headroom verified, default ≤50%, higher levels separately opted in/approved. Measure approved CPU effect and healthy non-target/observation paths; verify effect removal, CPU/guest/read-write recovery. Unachieved effect does not pass. |
+| V-04 / P1 | 物理内存压力Continuous，pressureLevel 1–99、初始≤50%，保留guest/recovery能力；90%/关键OOM另审。实测memory/OOM/进程事件，未授权损伤即停；移除后内存/guest/技术读写恢复，不称真实泄漏。 | Continuous physical memory pressure, pressureLevel 1–99, initial ≤50%, preserving guest/recovery headroom; separately review 90%/critical OOM. Observe memory/OOM/process events, stop unauthorized damage, verify memory/guest/read-write recovery after removal; not a real leak. |
+| V-05 / P1 | 指定目的地址/port/protocol/方向的latency/jitter，当前原生未映射，guest模拟另审；保存interface/qdisc/routes和owned handle，建议+100ms/60秒。实测协议影响/control，仅移除本次规则并比原配置；ping不替代协议。 | Destination/port/protocol/direction latency/jitter, currently native-unmapped; separately review guest simulation. Preserve interface/qdisc/routes and owned handles, proposed +100ms/60 seconds. Prove protocol impact/control, remove only owned rules and compare original configuration; ping is not protocol evidence. |
+| V-06 / P1 | 单目的路径loss，独立于V-05，初始1%/60秒、足够样本、owned rules/独立恢复；不改共享NSG/DNS/管理链路。证明丢包/重试/timeout，移除后协议与规则恢复，观察断开即独立停。 | Single-destination loss, separate from V-05, initial 1%/60 seconds with sufficient samples, owned rules and independent recovery; no shared NSG/DNS/management changes. Prove loss/retries/timeouts, restore protocol/rules after removal and stop independently on observation loss. |
+| V-07 / P1 destructive | 专用可销毁卷的有限owned文件耗尽bytes/inodes，精确mount/path/上限/保留空间/硬deadline、snapshot恢复，不填OS/broker卷；fallocate未必产生真实效果。验证限定写失败，其他卷健康；只删确切文件，空间/inodes/原合成数据读写恢复，损坏不会因cleanup自动修复。 | Exhaust bytes/inodes with bounded owned files on a disposable volume, exact mount/path/caps/reserve/hard deadline and snapshot recovery, never OS/broker volumes; fallocate may not achieve the intended effect. Prove scoped write failure and healthy other volumes; delete exact files only and verify space/inodes/original synthetic data. Cleanup does not repair corruption. |
+| V-08 / P1 | 专用卷IO压力，限定workers/IOPS/bytes/rate/精确PID/文件/成本/deadline；先测盘型/配额/latency/queue，不混V-07、不碰OS/broker/evidence。实测压力/节流，终止精确进程并清owned files后IO/guest/数据恢复。 | Dedicated-volume IO pressure with bounded workers/IOPS/bytes/rate/exact PIDs/files/cost/deadline. Baseline disk type/quotas/latency/queues; separate from V-07 and exclude OS/broker/evidence. Prove pressure/throttling, stop exact processes/clean owned files and verify IO/guest/data recovery. |
+| V-09 / P1 | 单VM一次Discrete restart，核对ID、全部消费者、boot/guest/服务runbook、备份、独立恢复；不重复restart。Azure operation+boot/guest/协议证明恢复，Running不足；不可undo，恢复超限/关键数据损伤Failed，不替代broker durability。 | One Discrete VM restart after ID/all-consumer/boot/guest/service-runbook/backup/independent-recovery checks; no repeated restart. Prove operation, boot/guest and protocol recovery, not merely Running. No undo; recovery overrun/critical-data damage is Failed, not broker-durability acceptance. |
+| V-10 / P1 | 单operation-owned测试进程termination/supervisor恢复，精确PID/executable/start identity/owner、操作前防PID reuse；不批量kill、不杀broker/agent/system、不关VM。目标/机制未确认则NotRun；证实旧进程终止、新进程技术行为恢复，只清本次进程。 | Terminate one operation-owned test process and recover via its supervisor, checking exact PID/executable/start identity/owner and PID reuse immediately before action. No bulk kills, broker/agent/system termination or VM shutdown. Unqualified target/mechanism stays NotRun; prove old termination/new technical behavior and clean only owned processes. |
 
-Geo-Replication replicates metadata **and messages/state**. Synchronous and asynchronous modes have different latency, availability, and RPO behavior; forced promotion in asynchronous mode can lose data or duplicate effects and is excluded by default.
+### 5.2 AKS Pod / AKS Pods
 
-Geo-DR is a different, mutually exclusive configuration: it replicates **metadata only**, not queue/subscription/DLQ messages, and alias failover breaks the pairing. If the existing environment uses Geo-DR, define a separate outbox/replay and re-pairing drill rather than treating B-05 as applicable. Verify secondary RBAC and network configuration independently.
+使用operator-owned [extension][aks-extension]，不默认Chaos Mesh。五个URN均1.0.0，结构duration至少PT1M、实际效果遵守§3 bounds；namespace匹配安装、精确AND labels含chaos-canary=target，禁止default/system/control/verification或wildcard。核对Linux/amd64/工具、admission、网络与私有支持。private/Cilium/mesh部分配置未验证，不等于永久不支持；PSA-restricted pod-delete helper可能失败。PDB不保证注入删除/节点丢失受自愿驱逐保护。
+Use the operator-owned extension, not default Chaos Mesh. Five URNs use 1.0.0, structural duration ≥PT1M and effects within §3 bounds. Namespaces must match installation, with exact AND labels including chaos-canary=target; no default/system/control/verification/wildcards. Qualify Linux/amd64/tools, admission, networking and private support. Some private/Cilium/mesh configurations are unvalidated, not permanently unsupported; pod-delete helpers may fail under restricted PSA. PDBs do not guarantee injected deletion/node loss follows voluntary-eviction protections.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| K-01 / P0 | `urn:csci:microsoft:containerservice:poddelete/1.0.0`；graceful、精确cohort/比例取整/替换成员、interval大于暴露。验证原Pod真删除、新Pod服务技术/业务流；delete不可取消，停止后续注入、核controller/readiness/账本。 | Graceful pod deletion with exact cohort/rounding/replacement membership and interval beyond exposure. Prove original deletion and replacement technical/business traffic; deletion is not cancelable. Stop further injection and verify controllers/readiness/ledgers. |
+| K-02 / P1 | `urn:csci:microsoft:containerservice:podcpuhog/1.0.0`；工具/架构合格，容量允许才从1core、≤60秒。测latency/队列、邻居/control、实际HPA不假定扩容；移除后CPU/Ready/阶段SLO恢复。 | Qualified tools/architecture; begin at one core only within capacity, ≤60 seconds. Measure latency/queues, neighbors/control and actual HPA rather than assuming scaling; remove and verify CPU/Ready/phase-SLO recovery. |
+| K-03 / P1 | `urn:csci:microsoft:containerservice:podmemoryhog/1.0.0`；指定container/headroom、1–128MB/比例、承认OOM风险。验证memory/OOM/restart与持久工作，无邻居/node损伤；移除并恢复副本/阶段SLO，不称逐步泄漏。 | Explicit container/headroom, 1–128MB/approved percentage with OOM risk acknowledged. Verify memory/OOM/restarts and durable work without neighbor/node damage; remove and restore replicas/phase SLO. Not a progressive leak. |
+| K-04 / P1 | `urn:csci:microsoft:containerservice:podnetworklatency/1.0.0`；network daemon合格，+100ms起、≤60秒，授权含sidecar。测真实latency/池/retry/control；移除后核全部连通/helper/container restart，不能只看Succeeded。 | Qualified network daemon, start +100ms, ≤60 seconds, including sidecars in approval. Measure actual latency/pools/retries/control; after removal verify all connectivity/helper/container restarts, not just Succeeded. |
+| K-05 / P1 | `urn:csci:microsoft:containerservice:podnetworkloss/1.0.0`；1%起、≤60秒、充足流量，不用100%默认。测loss/unknown/latency/attempt，提前helper删除使暴露未证实；移除后实际连通恢复，必要替换Pod另授权。 | Start at 1% loss, ≤60 seconds with sufficient traffic, no 100% default. Measure loss/unknowns/latency/attempts; early helper deletion leaves exposure unproven. Verify real connectivity after removal; separately authorize Pod replacement if needed. |
+| K-06 / P1 | 单Pod专用进程逐步内存增长，明确rate/bytes/终点/deadline/node headroom；原生未映射，本轮不编模拟。以后测增长曲线、limits/OOM/restart/非目标/数据；仅终止owned进程或获批替换，持续Ready/读写、无增长残留。 | Progressive memory growth in one dedicated Pod process with rate/bytes/end/deadline/node headroom. Native-unmapped, no simulation this phase. Later measure growth curve, limits/OOM/restart/non-target/data; terminate only owned processes or approved replacement, with sustained Ready/read-write and no residue. |
+
+网络效果可能在container restart后仍残留，即使run为Succeeded；必须实测清除，受影响测试Pod替换另授权，不全局放宽策略。
+Network effects may persist after container restart even with a Succeeded run. Prove removal; replacement of affected test Pods needs separate approval, not global policy relaxation.
+
+### 5.3 AKS 节点与 ASM / AKS Nodes and ASM
+
+通过AKS nodeResourceGroup发现VMSS/实际实例/zones，不硬编码MC_*、不import管理VMSS生命周期；NAP排除。节点故障不依赖Pod extension；核真实副本/存储/剩余容量/autoscaler/AKS reconciliation，控制/账本/恢复放故障外。
+Discover VMSS/instances/zones via AKS nodeResourceGroup, not hardcoded MC_* names or imported VMSS lifecycle ownership; exclude NAP. Node faults do not require the Pod extension. Check actual replica/storage/spare capacity/autoscaler/AKS reconciliation and keep control/ledger/recovery outside the fault.
+
+| ID / Priority | 中文场景、范围与恢复 | Corresponding English scenario, scope and recovery |
+| --- | --- | --- |
+| N-01 / P1 | 获批User-pool zone失效，VMSS shutdown明确region/zone并核全部匹配；独立窗口排System/恢复池，容量/副本/storage合格。证明节点失效/技术或业务恢复，停止后Ready/容量/存储；不声称完整可用区停机或自动重新分布。 | Approved User-pool zone loss via VMSS shutdown with exact region/zone and all matches checked; separate window excluding System/recovery pools with capacity/replica/storage qualification. Prove unavailable nodes and phase recovery, then Ready/capacity/storage; not a complete AZ outage or guaranteed redistribution. |
+| N-02 / P1 | node CPU pressure精确agent/instance scope待核，不压整池或用Pod hog替代。核vCPU/headroom/Pod放置，测主机CPU与隔离；移除后node/Pod/容量恢复，记录autoscaler。 | Exact agent/instance scope for node CPU pressure awaits qualification; no whole-pool pressure or Pod-hog substitution. Check vCPU/headroom/Pod placement, prove host CPU and containment; restore node/Pod/capacity and record autoscaler behavior. |
+| N-03 / P1 | node物理memory压力，核bytes/pressure/timeout/eviction/OOM与System/恢复排除；实例/恢复未核不运行。证明主机memory/eviction与受损，未授权组件受损即停；容量/数据/调度恢复，不假定迁回原node。 | Node physical-memory pressure with bytes/pressure/timeout/eviction/OOM and System/recovery exclusions; no run before instance/recovery qualification. Prove host memory/eviction/impact, stop unauthorized component damage, restore capacity/data/scheduling without assuming return to the original node. |
+| N-04 / P1 | 单node目的路径loss，原生未映射；interface/instance/owned rules/全部Pod-sidecar/guest恢复须明确，不改共享网络/全namespace。证实node-wide协议loss与control隔离，恢复原网络/Ready；K-05不能替代。 | Single-node destination-path loss, native-unmapped; require exact interface/instance/owned rules/all Pods-sidecars/guest recovery, no shared network/all-namespace changes. Prove node-wide protocol loss/control containment and original network/Ready restoration; K-05 is not a substitute. |
+| N-05 / P1 | 单node latency/jitter，与N-04分开，低强度短时、保存原配置、独立stop；主机路径latency实证，移除owned效果后协议/Ready恢复，缺证据不通过。 | Single-node latency/jitter, separate from N-04, low intensity/short duration with saved configuration and independent stopping. Prove host-path latency and protocol/Ready restoration after owned-effect removal; missing evidence does not pass. |
+| N-06 / P2 high-risk | 单node→API Server partition，PendingDesign/另审，不运行；精确API路径/lease/eviction/影响/ARM-guest恢复/硬deadline，不共享route或/dev/null，不假定4分钟安全。证明partition与lease/Ready相关，恢复调度/网络/数据；失控或超恢复限Failed。 | Single-node→API Server partition, PendingDesign/separate review, no run; exact API path/lease/eviction/impact/ARM-guest recovery/hard deadline, no shared routes or /dev/null and no assumed four-minute safety. Correlate partition with lease/Ready and restore scheduling/network/data; loss of control or recovery overrun is Failed. |
+| N-07 / P1 | 仅一User node不可用，zone筛选实际匹配必须恰一；多实例即不运行、不随机deleteinstances，运行前重查System排除/半池容量/存储。实际实例失效与恢复/数据/容量有证据，不冒充N-01，记录新扩容量。 | Exactly one unavailable User node; zone filter must actually match one instance. Multiple matches mean no run, never random deleteinstances. Recheck System exclusion/half-pool capacity/storage before execution. Prove instance impact/recovery/data/capacity, not N-01; record added autoscaler capacity. |
+| I-01 / P2 | ASM/Istio指定proxy与control断连，核mesh/revision/连接基线/namespace/独立恢复；AwaitingTarget/PendingDesign，不装mesh补齐。未来独立模拟审查，证明仅获批连接丢失/重同步/技术流量/原网络；Pod-wide loss不等价、不同于N-06。 | Disconnect selected ASM/Istio proxies from control, checking mesh/revisions/connection baseline/namespaces/independent recovery. AwaitingTarget/PendingDesign; no mesh installation for coverage. Separately review future simulation and prove approved-only disconnection/resync/traffic/original network; Pod-wide loss is not equivalent, and this differs from N-06. |
+
+### 5.4 MySQL Flexible Server
+
+合格HA/backup/FQDN/事务幂等前置，区分SameZone/ZoneRedundant；HA/restart不是region outage。典型60–120秒failover不是应用RTO保证，geo-restore另核geo backup。参见[HA][mysql-ha]、[备份恢复 / backup/restore][mysql-backup]。
+Qualify HA/backups/FQDN/transaction idempotency and distinguish SameZone/ZoneRedundant. HA/restart is not region outage; typical 60–120-second failover is not application RTO. Geo-restore separately requires geo backups.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| M-01 / P0 | HA primary failover，单HA服务器一次；完整业务参考duration5分钟须schema确认，本轮实际1分钟，RestoreOnStop=false避免未审第二切换。持续事务核ack零丢失、库存不变量、FQDN池恢复/HA RTO；新primary/HA健康，回切另授权。 | One HA primary failover on one server; five-minute full-business reference duration requires schema validation, while actual native runs used one minute. RestoreOnStop=false avoids an unreviewed second transition. Under transactions verify no lost acks, inventory invariants, FQDN-pool recovery/HA RTO; healthy new primary/HA, separately approved failback. |
+| M-02 / P0 | 单次Discrete重启，非定时60秒outage；明确失败/安全重试、不需人工重启应用。实测outage、无storm/半事务/重复订单，Ready后重建stale连接、核数据与阶段SLO。 | One Discrete restart, not a timed 60-second outage; explicit failure/safe retry without manual app restart. Measure outage, no storm/half-transactions/duplicate orders; after Ready rebuild stale connections and verify data/phase SLO. |
+| M-03 / P1 | PITR：记录checkpoint，只改合成数据，恢复到新隔离server，不是Chaos failover。核恢复点前记录/不变量、RTO/RPO、身份/私网，不覆盖/销毁源；cutover/临时资源清理另授权。 | PITR: record checkpoint, alter synthetic data only and restore to a new isolated server, not Chaos failover. Verify pre-checkpoint records/invariants, RTO/RPO, identities/private networking; never overwrite/destroy source, separately approve cutover/temporary cleanup. |
+| M-04 / P1 | 实际独立read replica客户端路径不可用，不能用HA standby；精确目标/lag/测试流量/control，禁共享NSG改动。机制未确认NotRun；未来局部模拟证明replica路径失效/主路径健康，恢复连接/lag/合成读，不声称服务或复制链路停机。 | Unavailable client path to an actual independent read replica, not HA standby; exact target/lag/test traffic/control, no shared NSG changes. Unconfirmed mechanism stays NotRun. Later local simulation proves replica-path loss/healthy primary, restores connections/lag/synthetic reads, not service or replication outage. |
+
+### 5.5 Blob Storage
+
+仅Blob，Files/ADLS Gen2/Queue/Table需独立变体；当前ZRS不合geo切换。账户级动作含全部服务/实体，排backend/backup/shared/恢复依赖。planned要求两区可用/同步完成，不测试真实primary-region unavailable；可约1小时、GZRS→GRS等冗余变化需实测，回切另授权。unplanned可能丢未复制数据/去geo/不一致，默认排除。参见[限制 / DR restrictions][storage-dr]、[planned][storage-planned]、[前置 / prerequisites][storage-start]。
+Blob only; Files/ADLS Gen2/Queue/Table need separate variants. Current ZRS is not geo-failover eligible. Account-wide effects include all services/entities; exclude backend/backup/shared/recovery dependencies. Planned failover requires both regions available and sync complete, not actual primary-region unavailability; it may take about an hour and alter redundancy such as GZRS→GRS, requiring observation and separate failback approval. Unplanned failover can lose unreplicated data/remove geo redundancy/create inconsistencies and is excluded by default.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| S-01 / P0 | Blob连接reset/transient，复用C-01/C-03/C-05，专用container/prefix/有限60秒流量；上传真实成功或有界失败，hash/length/ack对账，无重复逻辑对象；移除后核中断上传/读写。 | Blob reset/transient errors using C-01/C-03/C-05 on a dedicated container/prefix with bounded 60-second traffic; truthful completion/bounded failure, hash/length/ack reconciliation and no duplicate logical objects; remove and reconcile interrupted uploads/read-write. |
+| S-02 / P1 | RA-GRS/RA-GZRS只读secondary fallback，实际service/private access合格；不向secondary写，未复制对象按freshness契约处理非宣称丢失；恢复primary路径与应用回归。 | Read-only secondary fallback on qualified RA-GRS/RA-GZRS with verified service/private access; no secondary writes, handle not-yet-replicated objects under freshness contract rather than declaring loss; restore primary/application routing. |
+| S-03 / P1 account-wide DR | 专用合格geo账户planned failover，独立3小时窗口、同步/两区健康；审HNS/change feed/object replication/policies/全部服务，Files停止所有client/share activity。核RTO/ack对象/私网DNS，另授权failback并恢复冗余/复制/Files remount；Discrete不可undo。 | Planned failover on a dedicated eligible geo account, separate three-hour window with synchronization/both-region health; review HNS/change feed/object replication/policies/all services and stop Files client/share activity. Verify RTO/acknowledged objects/private DNS; separately approve failback and confirm redundancy/replication/Files remount. Discrete, no undo. |
+| S-04 / P1 recovery | 专用保护已启用/retention合格的合成Blob误删/覆盖，version/soft-delete恢复，非region failover；核准确content/version/hash/RTO，不覆盖新有效数据，仅清获批对象。 | Delete/overwrite synthetic Blob in a dedicated protection-enabled/retention-qualified fixture, restore via version/soft-delete rather than region failover; verify exact content/version/hash/RTO, never overwrite newer valid data and clean approved objects only. |
+
+### 5.6 Legacy Azure Cache for Redis
+
+仅Microsoft.Cache/redis Basic/Standard/Premium reboot，不是CDN/Enterprise/Managed Redis；replica需Standard/Premium，Basic的R-02为Blocked。现有部署可测，迁移Managed Redis不是本计划任务。参见[管理 / administration][cache-admin]。
+Reboot covers Microsoft.Cache/redis Basic/Standard/Premium, not CDN/Enterprise/Managed Redis. Replica tests require Standard/Premium; R-02 on Basic is Blocked. Existing deployments may be tested; migration to Managed Redis is not part of this plan.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| R-01 / P0 | PrimaryNode reboot，单实例/cluster先单明确ShardId并路由keys；核cache-aside fallback/后端负载/拓扑/值/回暖，无缓存持久保证，不选AllNodes。 | PrimaryNode reboot on one cache, initially one explicit ShardId for clusters with keys routed there; verify cache-aside fallback/backing load/topology/values/warm-up, no cache durability guarantee and no AllNodes. |
+| R-02 / P1 | SecondaryNode reboot，合格副本一次，不能同时主故障；应用/control符合SLO、副本重加入与冗余真实恢复。 | One SecondaryNode reboot on a qualified replica with no concurrent primary fault; application/control SLO, actual replica rejoin and restored redundancy. |
+| R-03 / P1 | 有限热合成keys expire/invalidate hook，非默认全库flush；回填并发有界、值正确/真值健康/回暖达标；停hook，仅重建测试keys。 | Expire/invalidate bounded hot synthetic keys via a hook, not default full flush; bounded refill concurrency, correct values/healthy source/warm-up; disable hook and rebuild test keys only. |
+| R-04 / P1 destructive | 全数据库flush，Legacy原生Workspace Action未确认，受控data-plane drill另审；专用独占可重建、实际cluster/database/消费者/TLS/Entra，不启keys、不删sessions/唯一持久数据。核实际全范围删除与重建版本/读写，少量key仅R-03；无undo，恢复失败Failed。 | Full database flush, no confirmed Legacy Workspace Action; separately review a controlled data-plane drill. Require exclusive reconstructible database, actual cluster/database/consumers/TLS/Entra; no access keys or sessions/sole-durable-data deletion. Prove full scoped removal/reconstruction/versions/read-write; bounded keys are R-03 only. No undo, recovery failure is Failed. |
+
+reboot不是flush，仍可能丢近期cache writes；不能从控制面成功推零丢失。
+Reboot is not flush and may lose recent cache writes; control-plane success does not establish zero loss.
 
 ### 5.7 Event Hubs
 
-Use dedicated entities, a dedicated consumer group and separately protected checkpoint storage. Freeze partitions, retention, producer acknowledgment semantics and replay capacity. Event Hubs is a retained partitioned stream, not a Service Bus queue; there is no message settlement/PeekLock contract or general per-message DLQ supplied by this case.
+专用hub/group、故障外checkpoint，核partitions/retention/ack/replay容量。它是保留分区流，非SB队列，无PeekLock/settlement或通用DLQ；backlog按partition lag/time/bytes，retention须覆盖故障+最差replay+证据余量。H-05/H-06是独立geo专项，不将entity state称region outage。参见[Geo-DR][eh-geodr]、[Geo-Replication][eh-georep]。
+Use dedicated hub/group and outside-fault checkpoints; qualify partitions/retention/ack/replay capacity. This is a retained partitioned stream, not an SB queue, with no PeekLock/settlement/general DLQ. Assess backlog by per-partition lag/time/bytes; retention must exceed disruption+worst replay+evidence margin. H-05/H-06 are separate geo drills; entity states are not region outages.
 
-| ID / priority | Hypothesis and mechanism | Scope / exposure | Acceptance and recovery |
-| --- | --- | --- | --- |
-| H-01 / P0 | An application retains/rejects work truthfully while event publishing is disabled. Use the event hub state Action with `SendDisabled`. | One dedicated event hub, explicit `eventhubs`; proposed 60 seconds subject to schema; bounded publishers. | Durable outbox or truthful deadline failure; existing consumer behavior observed; ack/unknown IDs reconciled. Verify original state restoration, replay and backlog drain. |
-| H-02 / P1 | A full entity disable does not lose accepted work or create duplicate effects after recovery. Use `Disabled`. | Separate run on the same isolated hub; record prior state, dedicated consumer group/checkpoint and retention margin. | Verify actual send/receive impact; no assumption that a disabled entity retains all new attempts. Restore original state, resume from durable checkpoints and account for all acknowledged events before retention expires. |
-| H-03 / P0 | Consumer termination after effect commit but before checkpoint is safe to replay. Use an application hook or qualified pod delete, not an entity-state Action. | Bounded event cohort; canary consumer group only; no checkpoint backend fault. | Duplicate delivery allowed, one effect per ID; per-partition ordering contract honored. Resume/rebalance consumers, reconcile offsets and drain within the agreed deadline. |
-| H-04 / P1 | 暂停专用 consumer group/隔离其测试消费路径，有限 producer 继续发布，验证积压、告警与恢复追赶。属于 client/consumer simulation，不是 namespace outage。 | 专用 hub/group、有限 input rate/总量、partition lag/bytes/retention 数值上限；durable checkpoint 与 observer 在故障外。不得撤共享 SAS Listen、全局 RBAC 或所有消费者权限。 | 实测各 partition offset/sequence 与 checkpoint lag 增长、producer ack/unknown；恢复原测试消费路径，从正确 checkpoint 追赶，保留/重放每个已确认测试事件，无错误 checkpoint 越过未提交 effect。retention 或恢复期限待确认时为 PendingVerification，不执行。 |
-| H-05 / P2, regional | Service-native metadata Geo-DR alias failover；验证新 endpoint/configuration 可用，不声称事件数据复制。 | 专用合格 primary/secondary、alias、实际 pairing、secondary RBAC/私网、旧事件/checkpoint 的保留与恢复计划。当前 secondary/配置未核验为 PendingVerification；此操作可能打破 pairing，恢复生命周期需独立授权。 | 正确 alias 指向 secondary，技术 publish/read 恢复；明示旧 events/checkpoints 不随 metadata failover 复制，单独记录旧侧可读/重放/缺失情况。恢复/重新 pairing 按已批准 runbook，不能将一次切换称可自动 failback 或零丢失。 |
-| H-06 / P2, regional | Service-native data Geo-Replication 的获支持 promotion，按实际 sync/async 契约验证数据/状态恢复；与 H-05 分开。 | 当前 region/SKU/API 支持、专用 primary/secondary、复制健康/同步、private access/RBAC、独立 checkpoint 与批准的 RPO/recovery contract；不因 Standard namespace 或 zone HA 默认可用。未经审查不强制提升可能丢数据的 async secondary。 | 原生 promotion 与新侧数据访问真实生效，逐 partition/ID 对照 ack/unknown、复制与 checkpoint 状态；检查唯一技术 effects，不承诺全局顺序/exactly-once。重新同步、身份/网络和回切另审，未知数据差距为 Inconclusive。 |
-
-Backlog is assessed per partition and in time behind the stream, not only message count. Require available retention to exceed the approved disruption plus worst-case replay and evidence margin. Geo-recovery is outside these cases; do not label entity state changes a regional outage.
-
-### 5.8 Optional Cosmos DB
-
-These cases apply to a verified Cosmos DB for NoSQL application contract. Other APIs require their own SDK/error/consistency variants. A module or account with one region is not an eligible offline-region campaign. Agree partition keys, consistency, session handling, write-region/automatic-failover configuration and conflict policy before selecting a case. See [Cosmos DB reliability][cosmos-reliability].
-
-| ID / priority | Hypothesis and mechanism | Scope / exposure | Acceptance and recovery |
-| --- | --- | --- | --- |
-| D-01 / P1 | The client tolerates bounded throttling/transport failure without retry storms or duplicate writes. Apply C-01/C-03/C-05 with NoSQL SDK semantics. | Dedicated items/partition keys and selected canary; 60 seconds; no shared throughput reduction. | Honor applicable retry-after/deadline; reconcile ack/unknown writes, ETags and expected consistency. Remove hooks and prove reads/writes; simulation is not actual regional/RU exhaustion. |
-| D-02 / P2, regional | An eligible multi-region account/application routes around an offline region. Use `microsoft-documentdb-offlineregion/1.0` with explicit `RegionName`. | Dedicated approved account and all affected regions/clients, not container-only scope. Validate role, read/write mode and actual regional impact first. | Meet agreed RTO/RPO/consistency and conflict contract, healthy alternate access, no missing acknowledged durable work outside the approved data-loss contract. Confirm region reintegration, replication and traffic return; cancellation alone is not restoration proof. |
-
-No zero-RPO promise is made for every consistency/failover configuration. D-02 is Unselected in this campaign; if selected later, regional Action schema and account topology are PendingVerification, not assumed incompatible. Do not add a second region merely to complete coverage.
-
-### 5.9 AKS pods
-
-Use the operator-owned [AKS extension][aks-extension], not classic Chaos Mesh. All five extension IDs below use **1.0.0**, unlike the service-direct `name/1.0` IDs. Structural Action duration is at least `PT1M`; effect parameters remain within the module bounds. Qualify private-cluster behavior without opening public access. Review narrowly scoped helper admission/security only where required, never relax verification or cluster-wide policy.
-
-| ID / priority | Hypothesis / extension Action | Initial containment | Acceptance and recovery |
-| --- | --- | --- | --- |
-| K-01 / P0 | Workload replacement preserves business outcomes: `urn:csci:microsoft:containerservice:poddelete/1.0.0`. | Exact namespace AND labels; graceful deletion; preview percentage rounding and replacement membership; interval longer than exposure. One dedicated recoverable canary cohort. | Prove intended pods were deleted and replacements served real traffic; requests/ledgers meet contract. Pod delete is not cancelable; stop further injection, verify controllers/readiness and data. |
-| K-02 / P1 | CPU contention yields bounded latency and contains resource pressure: `urn:csci:microsoft:containerservice:podcpuhog/1.0.0`. | Verified target container tools and Linux amd64 placement; begin with 1 core only if capacity budget permits; <=60 seconds. | Business SLO/degradation contract, neighbor/control health and bounded queues; observe HPA behavior rather than assume scale-out. Remove effect and verify actual CPU, readiness and SLO recovery. |
-| K-03 / P1 | Memory pressure is contained and restart paths preserve durable work: `urn:csci:microsoft:containerservice:podmemoryhog/1.0.0`. | Explicit container and measured memory headroom; select within 1-128 megabytes and approved pod percentage. OOM/restart risk acknowledged. | No unintended node/neighbor pressure or data corruption; observe OOM/restarts and reconciled effects. Remove pressure; restore healthy replicas and sustained business SLO. |
-| K-04 / P1 | Pod-wide delay preserves bounded timeouts/retries: `urn:csci:microsoft:containerservice:podnetworklatency/1.0.0`. | Network daemon/support confirmed, Linux amd64 pods, begin +100 ms within 1-500 ms, <=60 seconds. Include sidecar impact in authorization. | Actual delay visible on relevant traffic, bounded pools/retries and healthy control. Verify all affected connectivity after removal and inspect helper/container restarts. |
-| K-05 / P1 | Partial packet loss does not create retry amplification or false acknowledgments: `urn:csci:microsoft:containerservice:podnetworkloss/1.0.0`. | Same network gate; begin 1% within 1-10%, <=60 seconds; no inherited 100% default. | Prove loss on relevant traffic with enough volume; reconcile unknown writes, latency and attempts. Verify removal; an early-deleted helper makes intended exposure unproven. |
-| K-06 / P1 | 单 Pod 内存逐步增长模型，观察 limits、OOM/restart 与恢复；是专用 bounded simulation，不把固定 memory hog K-03 称为真实泄漏。 | 仅 operation-owned 测试进程/容器、精确 namespace/labels、明确增长速率/bytes/终点/超时、保留 node headroom；先低强度。当前原生机制未映射为 PendingDesign，权限未批为 AwaitingAuthorization；不为本轮编写模拟，不修改全局 OOM/安全策略。 | 实测逐时增长曲线而非仅高内存；记录是否触发约定 OOM/restart、非目标/node health、持久技术数据与恢复。终止本次精确进程/模拟，内存回落或已批准替换测试 Pod，持续 Ready/读写，不能残留增长进程。 |
-
-Published caveats: private clusters are **unvalidated**, not universally unsupported; CPU/memory on some Cilium/service-mesh configurations are also unvalidated. Pod delete helper pods fail in PSA-restricted target namespaces. Network faults can persist after container restart even when the run says `Succeeded`; recovery may require separately authorized replacement of affected test pods. A PDB does not guarantee injected deletion/node loss obeys voluntary-eviction protection.
-
-### 5.10 AKS nodes and private RocketMQ VM
-
-Node-level tests do not require the pod extension. Discover AKS `nodeResourceGroup`, approved user-pool VMSS and actual instances/zones through the cluster, not a hardcoded `MC_*` name. Do not import/manage AKS VMSS lifecycle. NAP pools are excluded. See [AKS node guidance][aks-nodes].
-
-| ID / priority | Hypothesis and mechanism | Scope / exposure | Acceptance and recovery |
-| --- | --- | --- | --- |
-| N-01 / P1 | Loss of the approved user-pool zone preserves the application's agreed outcome. Use allowlisted VMSS shutdown. | Exact VMSS IDs plus one verified location/zone; inspect **all** matching instances, remaining capacity, replica placement, storage zone constraints and autoscaler. Separate window; no system/recovery pool. | Nodes actually unavailable; intended blast radius only; pods reschedule or fail within agreed contract; durable ledgers and application recovery pass. Confirm node readiness, capacity and storage after stop; do not promise automatic redistribution or full-zone-outage equivalence. |
-| V-01 / P1 | RocketMQ survives a broker VM restart according to its actual durability contract. Use `microsoft-compute-restart/1.0`. | One dedicated private broker VM, selected test topics/groups; NameServer dependency and standalone/HA architecture documented; never jumpserver. | Verify broker/store and client reconnect, ack/unknown message reconciliation and unique effects. Restart has no undo; verify systemd/bootstrap completion, NameServer registration and sustained send/consume, not just VM Running. |
-| V-02 / P2, deferred | Bounded broker resource pressure does not harm other workloads or lose durable accepted work. Native CPU/memory Actions provide the mechanism; broker business acceptance is a separate contract. | Dedicated VM, verified OS/managed identity/public outbound, reviewed intensity and storage/memory limits. Single-VM mechanisms are module-allowlisted under V-03/V-04; the native run installs and retains its agent extension. | Agent effect and real load proven; bounded retry/backlog and durable message contract; remove effect and verify broker/store/business recovery. Unselected business case, not a mandatory Blocked item; V-03/V-04 prerequisites remain separate. |
-
-A standalone broker restart may legitimately stop service; accept only truthful bounded failures or approved durable queuing, never invent HA. Disk persistence and sync/async flush/replication determine whether a broker acknowledgment is durable. Freeze that contract before V-01.
-
-### 5.11 VM infrastructure cases
-
-V-03–V-10 与 V-01/V-02 的 broker 业务目标不同。可规划复用当前 RocketMQ VM，但运行前核对所有现有进程/数据/消费者、允许中断及独立恢复；不能因为不测 broker 业务就忽略 VM 故障对 broker 的影响。OS、broker 持久数据、backend/evidence/恢复盘不作为 disk fault 目标；jumpserver 不作为任何 fault 目标。
-
-| ID / priority | 目的、机制与步骤差异 | 前置、范围与参数 | 验收与停止恢复 |
-| --- | --- | --- | --- |
-| V-03 / P1 | Workspace `microsoft-compute-cpuPressure/1.0`，Continuous CPU pressure。完成 agent 资格后逐级施压，不直接照搬所有 cores 100% 长时占满。 | 已实现默认关闭的单 VM 配置；实际 OS/agent、身份/网络、CPU baseline、恢复 headroom 及 `pressureLevel`/duration 仍需云端核验。目标必须进入已核验 agent allowlist；初始 ≤50%，更高配置需单独 opt-in，运行另授权。 | 实测目标 CPU/相关进程负载达到批准范围，非目标与独立观察可用；取消/结束后 agent effect 消失、CPU 回基线、guest health/技术读写恢复。未达效果或监控缺失不能 Passed。 |
-| V-04 / P1 | Workspace `microsoft-compute-physicalMemoryPressure/1.0`，Continuous 物理内存压力。不是通用应用泄漏/自动 OOM 测试。 | 已实现默认关闭的单 VM 配置；agent/catalog/现有工作负载与 headroom 合格，明确 `pressureLevel` 1–99 和超时，保留 guest/recovery 操作能力。初始 ≤50%；90% 及关键进程 OOM 风险另审，运行另授权。 | 实测 memory 使用与 OOM/进程事件；未授权关键进程受损即停。移除 effect 后 memory、guest 与技术读写正常，无残留压力；不能以 Action 成功替代真实内存效果。 |
-| V-05 / P1 | VM 特定测试目的地址的网络 latency/jitter；没有已确认对应 Workspace VM Action 时，先评审隔离 guest simulation。 | 单 VM、单目的地址/port/protocol/方向、实际 interface，保存原 qdisc/routes 与明确本次 handle；初始 +100 ms/60 秒。当前为原生机制未映射；权限/恢复未核验按 PendingVerification/AwaitingAuthorization 标注，不默认安装 guest 模拟或覆盖原规则。 | 实际协议 latency 达到批准变化，非目标路径健康；移除仅本次规则并比对原网络配置/连通性。ping 可辅助，不能替代应用协议影响；不得清空已有 qdisc/共享规则。 |
-| V-06 / P1 | VM 特定测试路径 packet loss；与 V-05 分开单故障 simulation，不能称 Azure network outage。 | 单目的地址/port/方向、足够样本、明确实际 interface/owned rules 与独立恢复；初始 1%/60 秒。禁止改共享 NSG/DNS 或覆盖管理链路。 | 丢包和协议重试/超时实证，control 不受损；移除 owned rule 后实际协议恢复、无残留。控制/观察断开即独立 operator 停止恢复。 |
-| V-07 / P1, destructive | 有限 owned 文件占用专用可销毁测试卷，模拟 bytes/inodes 耗尽；不填 OS 或 broker 数据 filesystem。 | 明确 disk/filesystem/mount 与唯一文件路径、bytes/inodes 上限/保留量、工具能力和 hard deadline；保护原数据，snapshot/恢复资格确认。不保证 fallocate 在所有 filesystem 上真实耗尽，未达效果为 Inconclusive。 | 目标卷实际使用量与预期限定写入失败；其他卷/进程/恢复健康。只删除本次确切文件，空间/inodes 回到允许基线、校验已有合成数据和读写；文件 cleanup 不等于损坏数据自动恢复。 |
-| V-08 / P1 | 专用测试卷 bounded IO pressure simulation，限制 workers/IOPS/bytes/rate，单独运行，不混 V-07。 | 确认盘型、配额/节流、latency/queue baseline、测试目录/文件、精确进程 ownership、成本与 hard deadline；不触碰 broker/OS/evidence 卷。 | 实测 IO/queue/latency 或节流符合注入目标；停止本次精确进程/清理 owned files 后 IO/latency 回基线，guest/技术数据健康。其他资源受损或预算超限即停。 |
-| V-09 / P1 | `microsoft-compute-restart/1.0`，单 VM 单次 Discrete restart；仅基础设施验收，不替代 V-01 broker durability。 | 正确 VM ID、允许中断的所有间接消费者、boot/guest/服务恢复 runbook、独立 observer/operator、当前健康与备份；无自动重复 restart。 | Azure operation + boot/guest/实际技术连接证明重启与恢复。stop 只能阻止进一步操作，不能 undo 重启；恢复超约定预算或已有数据/关键服务受损记 Failed。 |
-| V-10 / P1 | 单 operation-owned 测试进程 termination + supervised recovery；无 guest Workspace Action 时独立 service-native drill，不套 App Service kill-process。 | 精确 PID、executable/start identity、owner 和明确 supervisor/start contract；操作前重新核对 PID 以防 reuse。禁止按名字批量 kill、杀 broker/agent/system 进程或关闭整个 VM。进程尚未选定为 AwaitingTarget，原生机制未映射为 PendingDesign，不启动。 | 原进程实际终止，按已批准机制恢复新进程/技术行为，其他进程不受损。恢复失败启动限定 runbook，不 broad catch/自动重复 kill；退出后清理 owned 测试进程，不改变原业务服务生命周期。 |
-
-### 5.12 AKS node infrastructure cases
-
-仅授权测试 User pool 的实际实例；当前 User pool 两节点，单节点故障可损失一半容量。声明 three zones 不证明每 zone 有实例，VMSS zone filter 不保证单实例。控制/ledger/recovery 放在实际故障之外。agent 对 VMSS 的作用范围、NAP、autoscaler/AKS reconciliation、存储/调度必须核实；不把 Pod-only 故障替代 node-wide 证明。
-
-| ID / priority | 目的、机制与步骤差异 | 前置、范围与参数 | 验收与停止恢复 |
-| --- | --- | --- | --- |
-| N-02 / P1 | 测试 node CPU pressure；优先核对 Workspace VMSS CPU agent Action 是否满足实际授权实例边界。单实例作用范围未证实为 PendingDesign/PendingVerification，不压整池或另造模拟。 | node/VMSS/instance 对应、实际 vCPU/agent/pressure scope、非目标/system pods 放置与剩余容量；不为兼容模板自动压满整池。高强度单独审查。 | 真正目标主机 CPU 受压而非只一个 Pod；邻居/System pool/observer 不受损。移除效果、核实节点/Pod readiness、CPU 与容量恢复，记录 autoscaler/reconciliation。 |
-| N-03 / P1 | 测试 node physical memory pressure；agent 实例作用范围同 N-02，不能用 K-03 的容器高内存冒充节点饱和。 | 实际 memory/headroom、pressure/bytes/超时、eviction/OOM 风险、System/恢复组件排除；实例/恢复边界待核验为 PendingDesign/PendingVerification，未完成不运行。 | 主机 memory/OOM/eviction 及目标影响实证；未批准关键组件受损即停。恢复 node/容量/技术数据与已约定的 Pod rescheduling，不假定自动迁回原节点。 |
-| N-04 / P1 | 单 test node 特定路径 packet loss；当前 Pod extension 不是 node network Action，精确原生机制未映射为 PendingDesign，不补 node-level 模拟。 | 正确 interface、node/instance/目的路径、owned rules、所有受影响 Pod/sidecar 清单和独立 guest recovery。禁止全 namespaces 选择、管理/共享网络改动。 | node-level 协议丢包/重试、真实影响范围与未授权控制隔离；恢复原配置、Ready 与实际连通性。不能用 K-05 的 Pod-only 证据关此 case。 |
-| N-05 / P1 | 单 test node latency/jitter，机制资格同 N-04；与 packet loss 分开。 | 明确目的路径和本次规则；初始低延迟/短时，不能照搬 all pods/长时默认。停止通道独立，预先记录原配置。 | 主机路径 latency 实证、非目标不受损；移除本次 effect 后协议/Ready/规则恢复。精确原生机制或 node 作用/恢复证据缺失为 PendingDesign/PendingVerification，不冒充通过。 |
-| N-06 / P2, high-risk | 单 test node 到 API Server 路径 partition；当前未确认等价原生 Workspace Action，PendingDesign，独立可行性/恢复审查，不运行。 | 精确实例、API 目的路径、lease/eviction 实际配置、所有间接影响、guest/ARM 独立恢复及 hard deadline。禁止 shared route 改动，不照搬指向 `/dev/null`，不假定四分钟一定在 eviction 前。 | node lease/Ready/事件和实际 partition 相关，控制/其他节点未受损；恢复后 lease、Ready、调度/技术读写与网络一致。不能只看到 NotReady 就 Passed，恢复窗口超限/失控即 Failed。 |
-| N-07 / P1 | 仅一个授权 test node unavailable；获支持 VMSS shutdown Action 的 zone 选择若匹配多个实例，则不执行，另审机制，不采用随机 deleteinstances。 | 当前 node/VMSS/zone 映射、实际匹配恰一个、排除 System pool、剩余容量/副本/存储约束；每次 start 前重验，不能只凭配置 zone 名字。 | 正确实例/node 确不可用、实际影响不扩大；停止/恢复后节点、容量、技术读写与数据正常。不能将单节点结果写为 N-01 entire-zone resilience；autoscaler 引入新容量须记录。 |
-
-### 5.13 ASM control/data partition
-
-| ID / priority | 目的、机制与步骤差异 | 前置、范围与参数 | 验收与停止恢复 |
-| --- | --- | --- | --- |
-| I-01 / P2 | 指定 test proxies 与 ASM/Istio control plane 断连，观察已有数据面与恢复。不是 AKS API/node partition N-06。 | 实际 ASM/Istio、proxy/control revision 与连接基线、准确 namespace/proxy 选择、独立恢复。当前 AwaitingTarget / PendingDesign；不为补齐用例安装 mesh、Chaos Mesh 或重装 extension。无对应 Action 时单独审隔离 simulation。 | 实测指定 proxy/control 连接丢失与未授权对象健康；恢复连接/同步、技术流量和原网络状态。Pod-wide loss 影响 sidecar/所有目的路径不等于仅控制面断连，不冒充等价通过。 |
-
-### 5.14 Future Load Balancer cases
-
-本轮无用户管理的 LB 目标；三个 case 均 Future、不执行，不把 AKS 托管 LB 纳入。后续有目标才核对 SKU、backend/probe/routing、独立控制、最小权限、配置 ownership 与恢复。
-
-| ID / priority | 目的、拟用机制 | 范围/前置与参数 | 验收与恢复 |
-| --- | --- | --- | --- |
-| L-01 / P1 | 单 backend unavailable。后续核对 `microsoft-network-updateloadbalanceradminstate/1.0`、backend admin state 与区域 schema 是否匹配；否则独立 native/simulation review。 | 实际 LB、精确 backend pool/address、scope/count、健康 control 与原 admin state；单 backend，不全池。 | 指定 backend 不接流量、非目标路由符合技术契约；恢复原 admin state，probe/backend/流量恢复。admin Down 不证明后端 VM 已崩溃。 |
-| L-02 / P1 | 单 backend 测试网络路径中断；与 admin-state 不互称等价。 | 本轮 Future；后续选定独立测试 backend/目的路径/owned fault rule、真实路由与 recovery；不改共享 NSG/DNS。隔离机制待映射为 PendingDesign，不阻塞本轮已有目标。 | 网络实际受损、probe/routing/连接变化及 control 证据；移除本次 effect，原网络/probe/连接正常。 |
-| L-03 / P1 | 单 backend 健康探针异常；通过专用 test responder/hook/native route 单独评审。 | 准确 probe protocol/port/path/threshold 与 backend、独立 control/恢复；不默认修改共享 probe。 | 真实 probe 状态改变与流量摘除/恢复，保留判定/恢复时间；ping 不是 LB probe 证据。 |
-
-### 5.15 Future Application Gateway cases
-
-本轮没有 Application Gateway；G-01–G-03 均 Future。AGFC 和 Azure Load Balancer 不是等价资源；不为 case count 建 Gateway，也不猜不存在的 Workspace Action。
-
-| ID / priority | 目的、拟用机制 | 范围/前置与参数 | 验收与恢复 |
-| --- | --- | --- | --- |
-| G-01 / P1 | 单 backend failure；后续评审专用 backend native/simulation，明确是否真实进程/实例故障。 | 实际 Gateway/SKU、pool/backend、监听/routing 与独立 control、授权恢复；无原生支持则显式标机制。 | 实际 backend health 与路由/技术响应受损并隔离；恢复原 backend、health/routing/连接，不等同 Gateway 整体故障。 |
-| G-02 / P1 | 单 backend 测试路径 network interruption。 | 精确 backend/destination/rules 和独立恢复；不改共享 NSG、DNS、TLS 或禁用验证。 | 实测 backend 网络、Gateway health、routing 与 control；只移除本次 effect，原网络/health/技术连接恢复。 |
-| G-03 / P1 | 单 backend probe abnormal；专用 test responder/hook/native 机制后续核对。 | 实际 probe protocol/hostname/path/threshold、目标 backend 和原配置；不直接扰动共享生产 probe。 | probe failure、backend 摘除与恢复、实际流量时间线；以 Gateway probe 证据判定，非 ping 或配置保存成功。 |
-
-## 6. End-to-end extension after individual services pass
-
-E-01–E-03 are later `phase=business` cases, not prerequisites for the current infra-first campaign. Their original acceptance remains intact; no infra result closes these application-flow cases.
-
-| ID / priority | Hypothesis | Controlled sequence and acceptance |
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
 | --- | --- | --- |
-| E-01 / P1 | Losing the cache does not overload the database or break the order flow. | Reuse the approved cache-only disruption while real cache-aside traffic runs. Do not also fault the DB. Assert backing-store headroom, business SLO, bounded refill, and correct records. |
-| E-02 / P1 | A DB commit and outgoing business event remain reconcilable during messaging loss. | Reuse B-01 during the actual order-to-outbox-to-Service-Bus flow. Verify committed DB order, retained outbox event, one eventual consumer effect, and backlog drain. No atomicity claim across services without a proven application pattern. |
-| E-03 / P1 | Pod/consumer replacement does not duplicate downstream effects. | Reuse K-01 with B-04/H-03's bounded cohort and the actual application path; one pod fault only. Reconcile pre-restart acknowledged work, retries/redelivery and one durable effect per ID. |
+| H-01 / P0 | 单hub SendDisabled、显式eventhubs、60秒须schema核验/有限publisher；持久outbox或deadline明确失败，观察既有consumer、ack/unknown，恢复原状态/replay/排积压。 | One hub SendDisabled, explicit eventhubs, schema-qualified 60 seconds/bounded publishers; durable outbox or explicit deadline failure, observe existing consumers and ack/unknown, restore prior state/replay/drain. |
+| H-02 / P1 | 单隔离hub Disabled独立运行，原状态/group/checkpoint/retention记录；真实send/receive影响，不假定新attempt均保留；恢复后从durable checkpoint重放并retention前对账全部ack。 | Separate Disabled run on one isolated hub with prior state/group/checkpoints/retention recorded; prove send/receive effects, not assumed retention of new attempts. Restore/replay from durable checkpoints and reconcile all acks before retention expiry. |
+| H-03 / P0 | effect commit后checkpoint前终止consumer，用hook或合格Pod delete，不用entity state；有限cohort/group、checkpoint不故障。允许重投但每ID唯一effect、遵守partition顺序契约；重平衡/offset核对/按deadline排空。 | Terminate consumer after effect commit before checkpoint using hook/qualified Pod delete, not entity state; bounded cohort/group, never fault checkpoint storage. Allow redelivery but one effect per ID and contractual partition order; rebalance/reconcile offsets/drain by deadline. |
+| H-04 / P1 | 暂停专用consumer/path，有限producer继续，属consumer simulation非namespace outage；明确rate/总量/lag/bytes/retention，不撤共享SAS/RBAC。测partition积压/ack，恢复正确checkpoint追赶/重放，不能越过未committed effect，预算未确认NotRun。 | Pause dedicated consumer/path while finite publishing continues; consumer simulation, not namespace outage. Bound rate/volume/lag/bytes/retention, never revoke shared SAS/RBAC. Prove partition backlog/ack, resume from correct checkpoints/replay without skipping uncommitted effects; unconfirmed budgets mean NotRun. |
+| H-05 / P2 regional | metadata Geo-DR alias failover，专用primary/secondary/pairing/私网/RBAC/旧events-checkpoint恢复获批；不复制事件。验证alias/new endpoint读写，单独说明旧侧可读/重放/缺失，断pairing后恢复另审，非自动failback/零丢失。 | Metadata Geo-DR alias failover with approved dedicated primary/secondary/pairing/private access/RBAC/old-event-checkpoint recovery; no event replication. Verify alias/new endpoint read-write, separately account for old-side readability/replay/gaps; re-pairing separately reviewed, not automatic failback/zero loss. |
+| H-06 / P2 regional | data Geo-Replication promotion，实际region/SKU/API/sync-async/复制健康/私网/checkpoint/RPO获批；Standard/zone HA不自动合格，默认不强提async。逐partition/ID/ack/unknown核数据与唯一effect，未知gap Inconclusive，重同步/回切另审。 | Data Geo-Replication promotion qualified by region/SKU/API/sync-async/replication health/private access/checkpoints/RPO; Standard/zone HA is not automatically eligible and forced async promotion is not default. Reconcile partition/ID/ack/unknown and unique effects, unknown gaps Inconclusive, separately review resync/failback. |
 
-No multi-service overlapping fault is proposed initially. A later combined outage needs a new hypothesis, cumulative impact budget, and explicit authorization.
+### 5.8 Load Balancer / Application Gateway（未来补充 / Future）
 
-## 7. Safety, permissions, stopping, and restoration
+当前无获批目标，不动AKS托管LB、不建Gateway填数量；AGFC/LB/Gateway不同产品。后续核SKU/backend/probe/routing、owning state、最小权限、control和恢复。
+No approved current targets; do not fault AKS-managed LB or create Gateways for counts. AGFC/LB/Gateway are different products. Later qualify SKU/backend/probe/routing, owning state, least privilege, control and recovery.
 
-### 7.1 标准执行步骤（所有用例/变体共用）
-
-本节保留完整 infra/business 验收流程。当前原生先行执行使用 §0.5 的最短流程；不要求先建设此处的自定义技术流量、账本和 observer，但目标、权限、停止与实际恢复边界仍须核对。
-
-| 步骤 | 操作与必要记录 |
-| --- | --- |
-| 1. 资格/授权 | 确定 ID/variant/phase、真实目标/间接消费者/排除、假设、数值预算、操作员/恢复权限；核对当前 catalog/schema/region/SKU/HA/agent/extension、无冲突维护/运行。缺少支持/资格/授权，不开始。 |
-| 2. 配置审查 | Terraform 做声明式配置；按 owning stage 使用固定工具/readonly lock、fmt/validate/相关测试、private saved plan。审 create/update/delete/replace、RBAC、网络、成本；不混 fault start。 |
-| 3. 前置部署/发现 | 只应用获批的同一 saved plan；核实资源/配置、RBAC 生效、Workspace discovery/exclusions 与真实 Pod/node/VMSS/实体匹配。保留已有安装/state；默认无 schedule/run。 |
-| 4. 无故障基线 | 云端 AKS technical probes 或后续真实业务流量，独立 control/ledger/observer；确认实际配额/容量、retention/保护、采样、硬 deadline 与停止通知/独立恢复演练。 |
-| 5. 显式单故障 | 再核对实际匹配范围和运行授权，operator 显式启动一个已审 Scenario/Action 或获批 native/simulation。禁止 Terraform provisioner/默认 pipeline/REST apply 自动启动；不得遇错自动加压、重启、failover 或修权限。 |
-| 6. 故障确认/观察 | 关联 Chaos/服务 operation、guest/Kubernetes events、实际协议/资源指标，记录 injection→impact→alert→decision；无命中/未达强度/Skipped 是缺证据，不是通过。 |
-| 7. 停止/恢复 | 达阈值即独立通知并停止；Continuous/Cancelable 验证实际效果消失。Discrete 或进行中的 transition 按已批准 recovery，不承诺取消可 undo、不发竞争 failover。恢复原实体/网络状态或明确接受新 primary，failback 另审。 |
-| 8. 稳定恢复/清理 | 按 phase 逐窗口验证 health、协议/业务与技术数据，确认 HA/容量/backlog/规则无残留。private scoped plan 调查 drift，不自动纠正；只删本次 owned PID/规则/文件/Job/权限/临时资源，不 destroy 共享目标。 |
-| 9. 报告 | 每 ID/variant/phase 给 Passed/Failed/Inconclusive/Blocked、中文依据、真实作用/恢复/限制与私有证据位置。记录 Future/Unselected，但不填 Passed；infra 与 business 分栏。 |
-
-无当前 Workspace Action 的 case 不执行旧 `chaos run` 样例来冒充 Chaos Studio 原生测试；先完成单独机制/权限/停止恢复评审，明确标 native/simulation。一个组合模板中的多个 Action 必须拆成初始单故障，不能借模板扩大范围。
-
-### Pre-run gate
-
-1. Confirm approved targets, affected users/data, time window, exposure limit, on-call operator, and recovery permissions.
-2. Validate baseline, backup/replication health, private connectivity, remaining capacity, and absence of conflicting maintenance or experiments.
-3. Review the resolved Workspace resource list and excluded list against the explicit allowlist. Dynamic discovery is not authorization. Require exact entity parameters; never leave them empty to imply all entities.
-4. Verify Action/API/region/SKU eligibility and parameters. Unknown support is PendingVerification/PendingDesign; an unselected matching target is AwaitingTarget; unhealthy HA is PendingPrerequisite until recovered. Do not start. Record Blocked only for an evidenced incompatibility or reproduced unresolved preflight failure, not every unfinished preparation task.
-5. Separate deployer, Workspace runtime identity, experiment operator, and application workload identities.
-6. Derive custom least-privilege permissions from Scenario validation output. Assign only on approved targets; do not use subscription-level Contributor/Owner or automatically invoke permission-fixing operations.
-7. Verify a tested cleanup/recovery procedure before fault start. Restore capacity includes the source of truth under cache misses and the consumer capacity required to drain messaging backlog.
-8. Prevent Terraform/GitOps from correcting only the intentional temporary fault state during the authorized window; do not disable unrelated controllers or add broad permanent `ignore_changes`.
-9. Rehearse the independent monitor and operator handoff: inject a harmless synthetic threshold breach or evidence silence, prove the signal reaches the operator within the agreed decision budget, and verify recovery access outside the target path. A script mounted in a ConfigMap is not an operational stop path.
-10. Freeze the maximum actual affected set: resource IDs, pod/node selection, entity names and indirect dependencies such as geo-linked caches and pod sidecars. Configuration validation alone cannot attest dynamic pod/VMSS instance membership.
-
-Use [resource targeting and validation][targeting] and [least-privilege role guidance][leastpriv]. Recommended catalog roles such as Contributor are references, not the default authorization policy.
-
-### Proposed immediate stop/escalation conditions
-
-- Any unapproved target or unaffected control flow is impacted.
-- Any lost acknowledged durable record, duplicate business effect, broken transaction invariant, or unexpected corruption.
-- Any unexplained success acknowledgment for failed/non-durable work.
-- Control-flow success falls below 99% for 60 seconds, or p95 exceeds 2x baseline for 60 seconds.
-- Retry calls exceed 3x baseline attempt rate for 30 seconds.
-- Application/backing-store CPU or memory exceeds 80%, or connection use exceeds 80% of its verified limit, for 60 seconds.
-- Test Service Bus backlog reaches 5,000 messages or 70% of approved entity capacity, whichever is reached first.
-- Event Hubs/RocketMQ lag or retained work approaches its approved replay/retention/storage limit; define numeric per-partition/time/bytes caps before those cases. Do not apply the Service Bus count blindly.
-- Recovery/observability access is lost, or the approved window/budget is exceeded.
-
-Tune thresholds before authorization. Dependency-specific expected failures are not automatically a reason to abort a hard-outage test; loss of containment, integrity, or recovery access is.
-
-Stop authority is the independent operator, informed by application/service evidence and the monitor. The current availability evaluator uses sample-count windows, silence/monitor budgets and optional latency/consecutive-failure thresholds; it does **not** implement every time-based rule above, evaluate CPU/backlog/integrity, cancel a run, or restore resources. Define cadence and maximum detection latency, map each rule to a proven observer/owner, and treat stale/missing evidence as Inconclusive plus stop/escalation. Do not describe the evaluator's limited `Passed` signal as a case pass.
-
-For Continuous/Cancelable faults, stop the run and remove the effect, then verify actual recovery. For Discrete or in-progress service-native transitions, stop further injection and escalate to the recovery runbook; do not assume cancellation reverses a restart, flush, unlink, or failover. Do not issue a competing failover while one is still in progress.
-
-### Recovery completion gate
-
-- Fault/proxy/hook removed; actual connectivity verified, not merely a successful control-plane response.
-- Original entity states restored, or new primary state deliberately accepted.
-- HA/replication healthy; cache warmed; messaging backlog and DLQ reconciled.
-- For `phase=infra`, §0.3 technical health/read/write and control criteria pass every recovery window with all attempted/ack/unknown IDs reconciled. For `phase=business`, the agreed business SLO/invariants pass for 10 minutes. Do not substitute either phase for the other.
-- No unexpected drift; after approved recovery, inspect a correctly scoped Terraform plan privately. Do not apply it automatically to force the old topology.
-- Clean up only owned test resources and assignments; retain required evidence privately. Never use `terraform destroy` as fault cancellation or business recovery.
-
-## 8. Dependency-ordered delivery and execution waves
-
-### Implementation tasks
-
-These consolidate the original T0-T8 and follow-up I0-I7 without treating already-installed infrastructure as missing. Owners are functional roles, not assumed named people. Agree a responsible operator before cloud work.
-
-| ID / owner | Prerequisites | Bounded deliverable | Exit gate |
-| --- | --- | --- | --- |
-| T0 / application + platform owner | None | Private case/variant/phase/target/state manifest, §0.3 technical contract or later actual business flow/SLO/RTO/RPO, eligibility, cost/window and recovery approvals. | Each selected case has a qualified scope/contract or a specific preparation status/evidenced incompatibility; no dependency on unselected business cases. |
-| T1 / Terraform owner | T0 | Preserve existing platform/cluster/Chaos state mapping; check applicable old-environment migration and current locked schema/plan. | No duplicate ownership, unexpected platform changes, widening RBAC or unreviewed replacement. Bootstrap/migration only if independently required and authorized. |
-| T2 / application + evidence owner | T0; approved control/HA prerequisites for its case | Technical canary/control, bounded protocol flows, independent ledgers, phase sampling and private evidence retention; later application adapters for business phase. Finish monitor/stop transport/operator handoff. | Authorized no-fault baseline meets the selected phase's contract; silence/notification rehearsal and independent recovery pass. Default Jobs remain off. |
-| T3 / Chaos configuration owner | T1 | Validate selected existing service-direct contracts/parameters/target filters; derive exact Action permissions through validation, review grant plan, revalidate after propagation. | Resolved/excluded resources match manifest and effective rights are usable; no permission auto-repair, no run. T2 is not a prerequisite to author configuration. |
-| T4 / AKS operator | T1, target selection/namespace contract from T0 | Reference and recheck installed extension/connection/federation/operator ownership; review architecture/image/admission/network cleanup and pod definitions. | Installation/support evidence refreshed; no duplicate install. Runtime qualification waits for T2/T5; network faults independently gated. |
-| T5 / operator + application owner | T2, applicable T3 or T4 | Select one eligible case/variant/phase, review deployment/traffic/run/recovery authorization, then execute bounded cloud qualification. | Intended impact, containment, phase-specific criteria, integrity and sustained recovery evidenced; Failed/Inconclusive/Blocked are explicit, not completion-by-count. |
-| T6 / relevant service owner | Clean recovery of relevant T5, T0 for expanded targets | Expand client/pod/entity/HA/node cases independently; native restore/destructive/DR/agent branches only with additional support/cost/ownership review. | Per-case evidence and approvals; no automatic escalation, repeated destructive actions or multi-fault overlap. |
-| T7 / evidence + Terraform owner | Each executed T5/T6 run | Reconcile all operations, review private drift, remove only approved temporary resources, classify/report gaps and regression set. | Recovery and retained report complete; any remaining drift/data unknowns have an explicit owner and next action. |
-
-Add focused constraint tests with configuration changes and behavior tests with measurement/client changes, not at the end. Use existing fixed-version validation-only CI; formatting, backend-disabled readonly init when needed, validate, targeted mocks/unit checks, TFLint and policy scanning are static evidence. Review applicable failures without global suppressions. Real apply tests, saved cloud plans, deployment and fault runs each need the relevant separate authorization.
-
-T1 and T2 implementation can progress after T0, but cloud baseline qualification waits for that case's required controls/HA/evidence resources. Service-direct T3 and pod T4 are separate branches; private pod compatibility or blocked geo cases must not block eligible client-path/service-direct cases. The [implementation batch plan](./chaos-studio-implementation-plan.md) tracks engineering work only; this document defines cases and acceptance.
-
-### Execution waves
-
-| Wave | Work | Exit condition |
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
 | --- | --- | --- |
-| 0: No fault | Case-specific T0-T4, approved HA/control prerequisites, technical baseline, independent ledgers, stop/recovery rehearsal. | Each case is qualified or has explicit pending preparation/evidenced Blocked status; lack of a prerequisite does not certify it or prevent unrelated eligible cases. |
-| 1: Minimal impact | Choose one eligible A-01/C-01/S-01, dedicated B-01/H-01 or qualified K-01; then other independently selected client/technical cases. | Actual cloud impact/control/integrity/recovery under §0.3; pure connectivity without injection cannot pass a fault case. Business adapters are not this phase's prerequisite. |
-| 2: Entity/HA recovery | C-02/C-04/C-05 where applicable; M-02/M-01/P-01, R-02 then R-01/R-03, B-02/B-03/H-02/H-04; separately reviewed V-09. | Case-specific eligibility/real impact/restoration, including B-03 Discrete cleanup and VM guest/data impact. No automatic repeat/restart. |
-| 3: Pressure/network/nodes | Qualified K-02–K-06, V-03–V-06/V-08, N-02–N-05/N-07 and P-02 after relevant low-impact recovery. I-01/N-06 remain PendingDesign until separate feasibility/containment review. | Agent/instance/image/rules/capacity/independent recovery; progressive intensity, real measured effect. Unmapped support is explicit; evidenced incompatibility stays Blocked, not fallback by default. |
-| 4: Destructive/geo/special | Separately qualified V-07/V-10, R-04/A-02/S-04/S-02/S-03/H-05/H-06; M-04 requires a real dedicated read replica. Other PITR/geo/zone cases only if additionally selected. | Per-target data/replication/backup/role/cost/recovery and irreversible-impact authorization; no auto-creation to fill coverage. |
-| 5: Later business/future | E-01/E-02/E-03 and original business-phase contracts; D/V broker cases only if selected; L/G future only with actual authorized targets. | Separate business SLO/invariants or future product qualification. Current infra pass does not close these cases; still one fault per run. |
+| L-01 / P1 Future | 单backend unavailable，后续核microsoft-network-updateloadbalanceradminstate/1.0与区域schema，精确pool/address/count/原admin state；证实流量摘除/control，恢复state/probe/routing，admin Down不证明VM崩溃。 | Single-backend unavailability; later verify microsoft-network-updateloadbalanceradminstate/1.0/regional schema, exact pool/address/count/prior state. Prove traffic removal/control and restore state/probe/routing; admin Down is not VM crash. |
+| L-02 / P1 Future | 单backend网络路径中断，机制另映射，不与admin-state等价；精确destination/owned rules/独立恢复、不共享NSG/DNS，测network/probe/routing/control，移除后原连接恢复。 | Single-backend network interruption, mechanism separately mapped, not admin-state equivalence; exact destination/owned rules/independent recovery, no shared NSG/DNS. Measure network/probe/routing/control, remove and restore connectivity. |
+| L-03 / P1 Future | 单backend probe异常，专用responder/hook另审，准确protocol/port/path/threshold，不改共享probe；实测状态/摘除/恢复时间，ping不替代probe。 | Single-backend probe failure via separately reviewed dedicated responder/hook; exact protocol/port/path/threshold, no shared-probe changes. Prove state/traffic removal/recovery timing; ping is not probe evidence. |
+| G-01 / P1 Future | 单backend进程/实例故障，明确native/simulation；实际Gateway/SKU/pool/listener/routing/control/恢复。证实backend health/路由/响应及恢复，不称Gateway整体失效。 | Single-backend process/instance failure with explicit native/simulation classification; actual Gateway/SKU/pool/listener/routing/control/recovery. Prove backend health/routing/responses and restoration, not whole-Gateway failure. |
+| G-02 / P1 Future | 单backend目的网络中断，精确rules/独立恢复，不改共享NSG/DNS/TLS；实测Gateway health/routing/control，移除owned规则后原网络恢复。 | Single-backend destination network interruption with exact rules/independent recovery, no shared NSG/DNS/TLS changes. Prove Gateway health/routing/control and original-network restoration after owned-rule removal. |
+| G-03 / P1 Future | 单backend probe异常，实际protocol/hostname/path/threshold/原配置与专用responder；证实probe failure/摘除/恢复流量时间线，非ping/配置保存成功。 | Single-backend probe failure with actual protocol/hostname/path/threshold/prior configuration and dedicated responder; prove probe failure/traffic removal/recovery timeline, not ping/configuration-save success. |
 
-Do not re-budget existing platform installation as new work. Cost review must include incremental capacity, traffic, retained evidence and temporary recovery fixtures, with a hard run/campaign ceiling and cleanup owner. No fixed price or cost approval is inferred from this document.
+### 5.9 PostgreSQL Flexible Server（保留补充 / Retained addition）
 
-Start with one run per low-risk case. After fixes, seek three consecutive clean runs for repeatable low-risk cases. Destructive/DR repetition is separately reviewed rather than automatically repeated three times.
+核HA primary/standby、tier/FQDN/pool/backup，不以replica promotion替代HA。WAL/workload可能延长恢复，SameZone不证明zone-loss，HA RPO不套异步跨区。参见[HA][pg-ha]、[备份 / backup][pg-backup]。
+Qualify HA primary/standby, tier/FQDN/pools/backups; replica promotion is not HA substitution. WAL/workload may extend recovery, SameZone does not prove zone loss, and HA RPO does not cover async cross-region replication.
 
-Budget items: HA database primary/standby, separate legacy/Managed Redis fixtures, eligible geo-replicated Redis members, Service Bus Premium secondary capacity, geo-redundant storage, private networking, AKS test Jobs, Chaos Studio, and monitoring retention. Exact estimates depend on region, SKU, data size, and duration; no cost approval is assumed.
-
-Repeat the agreed low-risk regression set after client/SDK/retry/network changes; schedule recovery/DR reviews at least quarterly or according to business risk. Coverage percentage is informational, not a global pass gate.
-
-## 9. Evidence and result classification
-
-For each run, capture privately:
-
-- Case ID, hypothesis, authorization reference, exact resolved targets, API/Action versions, parameters, identities, and fixture configuration.
-- Baseline, traffic volume, fault-impact evidence, unaffected-control results, timeline, and recovery actions.
-- Business success/latency, retry amplification, pools/connections, Kubernetes events, service metrics/health, and alerts.
-- Data/message reconciliation, hashes/invariants, lost/duplicate counts, RTO/RPO, backlog and warm-up results.
-- Chaos report plus independent application evidence; recovery/drift checks; limitations and next action.
-
-### Required private case manifest and report
-
-Use one stable case key plus a unique private run reference; retain the existing IDs below rather than renumbering PaaS cases. All fields are required for selected cases; state a specific non-applicability or blocker instead of leaving an empty value.
-
-| Group | Required fields |
-| --- | --- |
-| Identity and scope | Case ID/variant, hypothesis, flow/SDK version, configuration commit and working-tree changes, environment/state owner, authorization reference, operator/contact held privately, exact direct/indirect targets and exclusions. |
-| Mechanism | Simulation/service-direct/extension/native drill, Workspace region, Action/API versions, complete verified parameters, actual entity/pod/node set, intensity, exposure and maximum impact. |
-| Phase contract | `infra`: §0.3 technical workload, health/read/write/integrity, per-window samples, deadlines/retries, restoration budget and retention. `business`: actual flow, durable acceptance, business SLO/RTO/RPO and invariant/idempotency/consistency. Explicitly mark deferred business fields, not silent omissions or fabricated pass. |
-| Safety and restoration | Numeric thresholds with observer/detection budget/owner, independent recovery path, prior entity/topology states, backup/replication readiness, exact authorized stop/recovery/cleanup actions, cost and time ceiling. |
-| Observations | UTC wall-clock timeline plus monotonic elapsed measurements, actual fault impact, control and target metrics, raw sample counts, alert/stop handoff, unknown/ack IDs, reconciliation and recovery/drift evidence. |
-| Decision | Passed/Failed/Inconclusive/Blocked, Chinese explanation, evidence scope/limitations, follow-up owner, evidence location/hash/retention and explicit unresolved issues. |
-
-Store ledgers outside the faulted dependency and canary lifecycle; test restart must not erase the acknowledgment truth source. Reconcile attempted, acknowledged, unknown, persisted, consumed and failed IDs by their business acceptance contract; retry counts are not unique operation counts. Do not log payload secrets or tokenized endpoints. Redact resource/registry names, contexts, private addresses, tenant/subscription and run/request IDs, personal contacts and credentials from public reports.
-
-### Case-to-mechanism traceability
-
-| Case family | Current preparation path | Acceptance still required |
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
 | --- | --- | --- |
-| C-01-C-05, A-01/A-03, R-03, S-01/S-02, B-04, H-03, D-01 | Application hooks/proxies/protocol clients; Terraform can prepare Jobs/fixtures only. H-03 may use K-01 after pod qualification. | Actual selected-path impact, deadlines/idempotency, independent ledgers and recovery; not service outage proof. |
-| M-01/M-02, P-01/P-02, R-01/R-02, A-02/A-04 | Allowlisted service-direct definitions and existing/approved fixtures. | HA/cache/product eligibility, exact permissions, destructive/linked scope and data recovery. |
-| B-01-B-03, H-01/H-02 | Allowlisted explicit entity state definitions. | Actual send/receive behavior, prior-state restoration, ledgers/retention and backlog drain. |
-| S-03, D-02 | Allowlisted account-wide/region definitions; default single-region fixtures insufficient. | Geo/topology/schema/private access and distinct DR approval; not container-scoped or full-region loss proof. |
-| M-03/P-03/S-04/B-05 | Native restore/protection/promotion runbooks; not supplied by a Chaos Action here. | Isolated recovery, RTO/RPO, data/auth/network and re-protection; no source replacement. |
-| K-01-K-05 | Typed pod definitions plus operator-owned extension references. | Actual target match, private/architecture/image/admission compatibility and effect removal. |
-| N-01/V-01 | Allowlisted VMSS shutdown/VM restart. | Real instance/broker impact, spare capacity/storage, message ledgers and workload recovery. |
-| V-02 | Unselected broker business branch; single-VM pressure mechanisms exist under V-03/V-04. | VM managed identity/public outbound/OS, bounded pressure and separately selected broker durability qualification; native execution installs and retains its agent. |
-| M-04/R-04/H-04-H-06/K-06 | Dedicated replica/client path, native flush/geo drill, consumer pause, progressive memory simulation. | Exact actual support/targets/data/retention/ownership and independent cleanup; do not conflate standby, partial-key invalidation, metadata-only DR or fixed memory pressure. |
-| V-03-V-10/N-02-N-07/I-01 | Qualified compute agent/native action or separately reviewed scoped simulation/native drill. | VM/node/guest/agent/PID/volume/rule/mesh boundaries, actual effect and independent recovery; node-wide support not implied by Pod faults. |
-| L-01-L-03/G-01-G-03 | Future only; no current target. | Actual product/target/probe/routing and separately qualified mechanism/authorization; do not fault AKS-managed LB. |
-| E-01-E-03 | Actual multi-dependency application with one previously qualified fault. | Entire flow invariants, downstream headroom and durable eventual effects. |
+| P-01 / P0 | PlannedFailover一次，RestoreOnStop=false、不跳不合格；完整参考duration5分钟待schema、本轮1分钟。核ack committed写、in-flight安全完成/重试/unknown、pool/RTO/角色/HA，之后才下一切换。 | One PlannedFailover, RestoreOnStop=false, no ineligible skipping; five-minute full reference subject to schema, native runs one minute. Reconcile acknowledged committed/in-flight/retried/unknown writes, pools/RTO/roles/HA before another transition. |
+| P-02 / P1 | P-01干净恢复后另授权ForcedFailover，先记录WAL backlog/长事务；健康HA目标下ack committed零丢失、unknown核对/replay时间，HA/阶段SLO恢复，failback另审。 | Separately approved ForcedFailover after clean P-01 recovery, recording WAL backlog/long transactions. For healthy HA require no lost acknowledged committed writes, unknown reconciliation/replay timing, HA/phase-SLO restoration and separate failback approval. |
+| P-03 / P1 | retained/available backup内PITR到新隔离server不替源；核records/schema/app兼容/私网/身份/RTO/restore gap，只清获批临时fixture且保留证据。 | PITR within retained/available backups to a new isolated server without source replacement; verify records/schema/app compatibility/private networking/identity/RTO/restore gap, clean only approved temporary fixtures after evidence retention. |
 
-These are preparation paths, not a claim that any case has run. Report declared/installed/qualified/accepted evidence separately per selected case. Unselected optional cases are out of campaign scope with a reason, not Passed. Selected cases missing prerequisites retain the specific §0.1 preparation status and `execution=NotRun`; reserve Blocked for evidenced incompatibility or reproduced unresolved preflight failure. Coverage percentage may use a fixed, disclosed selected-case denominator, but never turns pending, skipped or blocked cases into success.
+### 5.10 Azure Managed Redis（保留补充 / Retained addition）
 
-| Result | Meaning |
+redisEnterprise资源名不证明产品/SKU；先核是可重建cache或sessions/持久state，异步不零丢失。[架构 / architecture][amr-waf]、[geo][amr-geo]供核对。Geo Replication Healthy不是数值lag，应用version markers测freshness。export/import默认不含，private-link/firewall限制不通过弱化网络绕过。
+redisEnterprise resource naming does not prove product/SKU. Distinguish reconstructible cache from sessions/durable state; async replication is not zero loss. Geo Replication Healthy is not numeric lag; measure freshness via application version markers. Export/import is excluded by default; do not weaken networks to bypass private-link/firewall restrictions.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| A-01 / P0 | C-01 cluster-aware客户端60秒断连，单canary/database路径，不声称node reboot；验证fallback/deadline/topology/真值/回暖，移除后真实请求恢复。 | C-01 cluster-aware client disconnection for 60 seconds on one canary/database path, not node reboot; prove fallback/deadline/topology/source/warm-up and real-request recovery after removal. |
+| A-02 / P1 destructive | 原生flush专用可重建database，geo-linked时全部linked caches均独占可删获批；未知属性PendingVerification、待删除许可AwaitingAuthorization、已知不可重建Blocked。测fallback/后端/回暖，擦除无undo，不触唯一business/session数据。 | Native flush of a dedicated reconstructible database; all geo-linked caches must also be exclusive/disposable/approved. Unknown properties PendingVerification, deletion AwaitingAuthorization, known non-reconstructible data Blocked. Verify fallback/backing load/warm-up; erasure has no undo, never sole business/session data. |
+| A-03 / P1 regional | 隔离区域测试clients并应用endpoint/identity重定向，专用合格active geo group/HA/SKU/version/modules/配置/私网；核RTO/freshness-RPO/并发写/alternate健康、路径恢复后convergence，非Azure区域故障，不切service replication。 | Isolate regional test clients and redirect app endpoint/identity on a dedicated eligible active geo group/HA/SKU/version/modules/configuration/private access. Verify RTO/freshness-RPO/concurrent writes/alternate health and convergence after path restoration; not Azure-region or service-replication outage. |
+| A-04 / P2 topology | force-unlink明确linked IDs，专用disposable group与恢复生命周期另授权；健康成员/memory/replication实证，必要删除重建受影响成员按runbook获批，重join/convergence后回流；不是故障注入或自动re-link。 | Force-unlink explicit linked IDs on a dedicated disposable group with separately approved recovery lifecycle; prove healthy members/memory/replication, approve required affected-member deletion/recreation under runbook, rejoin/converge before return. Not outage injection or automatic re-link. |
+
+### 5.11 Service Bus（保留补充 / Retained addition）
+
+专用queue/topic/subscription、有限backlog/TTL，持久业务用PeekLock。Geo-Replication复制metadata+messages/state；sync/async不同，forced async可能丢数据/重复，默认排除。Geo-DR与其互斥、仅metadata不含queue/subscription/DLQ数据，alias failover断pairing；若用Geo-DR另定义outbox/replay/re-pairing，不冒充B-05。核secondary RBAC/私网。[locks][sb-locks]、[Geo-Replication][sb-georep]、[Geo-DR][sb-geodr]。
+Dedicated queues/topics/subscriptions, bounded backlog/TTL and PeekLock for durable business. Geo-Replication copies metadata+messages/state; sync/async differ, and forced async promotion may lose data/duplicate effects, excluded by default. Mutually exclusive Geo-DR copies metadata only, not queue/subscription/DLQ data, and alias failover breaks pairing. Existing Geo-DR requires a separate outbox/replay/re-pairing drill, not B-05 substitution. Qualify secondary RBAC/private access.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| B-01 / P0 | 单queue SendDisabled/显式queues/60秒schema合格；发送明确失败或durable outbox，旧消息仍消费，ack/unknown核对；原状态恢复、replay/唯一effect。 | One queue SendDisabled with explicit queues/schema-qualified 60 seconds; explicit send failures or durable outbox, existing-message consumption, ack/unknown reconciliation; restore prior state/replay/unique effects. |
+| B-02 / P0 | 单queue ReceiveDisabled60秒、有限publisher；证明send/积压告警/预算与无损，恢复原状态/send/receive/settle，排空无重复committed effect。 | One queue ReceiveDisabled for 60 seconds with bounded publishers; prove send/backlog alerts/caps/integrity, restore prior state/send/receive/settle and drain without duplicate committed effects. |
+| B-03 / P1 | topic与subscription disable分别运行、精确列表、Discrete、operator持有60秒后显式恢复；核接收/拒绝与所有受影响subscriptions，不假定disabled持续积压；Cancel亦须原状态恢复/对账DLQ。 | Separate topic/subscription disable runs with exact lists, Discrete actions and operator-managed 60-second hold before explicit restoration. Verify accepted/rejected work/all affected subscriptions, no assumed backlog accumulation while disabled; restore prior state/reconcile DLQ even after Cancel. |
+| B-04 / P0 | consumer effect commit→complete间隙断连接/锁/settlement，另测handler delay超过lock renewal budget；有限cohort，不改全局锁。重投允许每ID唯一effect/DLQ对账；移除后排空或显式dead-letter测试消息/核renewal。 | Interrupt connection/lock/settlement between consumer-effect commit and completion; separately test handler delay beyond lock-renewal budget. Bounded cohort, no global lock changes. Allow redelivery with one effect per ID/DLQ reconciliation; remove, drain or explicitly dead-letter test messages and verify renewal. |
+| B-05 / P2 regional | 合格专用Premium同步secondary的planned Geo-Replication promotion，region/identity/私网已核，不是queue Action。稳定hostname恢复、ack消息/state保留、RTO/ledger通过，重同步与reverse promotion另审；不套metadata-only Geo-DR。 | Planned Geo-Replication promotion on dedicated eligible Premium with synchronized secondary and verified region/identity/private access, not queue Action. Stable-hostname recovery, retained acknowledged messages/state, RTO/ledger acceptance; separately review resync/reverse promotion, not metadata-only Geo-DR. |
+
+### 5.12 Cosmos DB（保留但本轮不选 / Retained, Unselected）
+
+NoSQL契约，其他API独立SDK/error/consistency变体；单region不能运行offline-region，partition/consistency/session/write region/conflict先确认，不为覆盖新增region。[可靠性 / reliability][cosmos-reliability]。
+NoSQL contract; other APIs need distinct SDK/error/consistency variants. Single-region accounts do not qualify for offline-region; agree partition/consistency/session/write-region/conflicts first, without adding regions for coverage.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| D-01 / P1 | C-01/C-03/C-05的NoSQL transport/throttle模拟，专用items/keys/canary60秒，不降共享吞吐；retry-after/deadline、ack/unknown/ETag/consistency对账，移除后读写，不称实际region/RU耗尽。 | NoSQL transport/throttle simulation via C-01/C-03/C-05 on dedicated items/keys/canary for 60 seconds, no shared-throughput reduction; reconcile retry-after/deadlines/ack/unknown/ETag/consistency and restore read-write, not actual region/RU exhaustion. |
+| D-02 / P2 regional | 合格多region账户offline-region/显式RegionName，全账户受影响clients纳授权非container scope；核读写mode/RTO/RPO/conflict/alternate、ack持久工作在契约内，region重入/复制/回流实证，Cancel非恢复证明；当前Unselected。 | Offline-region with explicit RegionName on eligible multi-region account; authorize account-wide affected clients, not container scope. Verify modes/RTO/RPO/conflicts/alternate and acknowledged durability under contract, prove reintegration/replication/return traffic; Cancel is not recovery. Currently Unselected. |
+
+### 5.13 RocketMQ 业务（保留但本轮不选 / Retained, Unselected）
+
+standalone重启可真实停服，只接受明确有界失败或批准持久排队，不虚构HA；disk/sync-async flush/replication决定ack durability。
+A standalone restart may legitimately interrupt service; accept explicit bounded failures or approved durable queues, not invented HA. Disk/sync-async flush/replication determine ack durability.
+
+| ID / Priority | 中文场景与验收恢复 | Corresponding English scenario and recovery acceptance |
+| --- | --- | --- |
+| V-01 / P1 | 原生VM restart下broker durability；专用private broker/topics/groups、NameServer/standalone-HA声明、非jumpserver。核broker/store/reconnect/ack-unknown/唯一effect，systemd/bootstrap/registration/send-consume持续恢复非VM Running；本轮不选。 | Broker durability under native VM restart; dedicated private broker/topics/groups, documented NameServer/standalone-HA and no jumpserver. Prove broker/store/reconnect/ack-unknown/unique effects and sustained systemd/bootstrap/registration/send-consume recovery, not VM Running; unselected. |
+| V-02 / P2 deferred | 原生V-03/V-04有界CPU/memory提供机制，专用VM/OS/identity/public outbound/headroom/存储合格，agent安装保留；另验broker retry/backlog/durable ack/真实压力/业务恢复，本轮业务不选，不阻塞独立VM前置。 | Bounded native V-03/V-04 CPU/memory provides mechanisms on qualified dedicated VM/OS/identity/public outbound/headroom/storage, with agent retained. Separately verify broker retries/backlog/durable acks/real pressure/business recovery; unselected business does not block independent VM preparation. |
+
+<a id="6-end-to-end-extension-after-individual-services-pass"></a>
+## 6. 后续业务流程验证 / Later Business-flow Validation
+
+E-family保留原英文验收，均后续business，不以前置infra/原生结果关闭；跨依赖业务流仍每次只故障一个依赖，组合故障另需新假设/累计预算/授权。
+Retain original English E-family acceptance for later business phases; infra/native results do not close them. Multi-dependency business flows still use one fault per run; combined faults need a new hypothesis/cumulative budget/approval.
+
+| ID / Priority | 中文场景与验收 | Corresponding English scenario and acceptance |
+| --- | --- | --- |
+| E-01 / P1 | cache-only故障下实际cache-aside订单流，不同时故障DB；后端headroom/业务SLO/有限回填/正确订单。 | Cache-only fault during actual cache-aside order flow, never simultaneous DB fault; verify backing headroom/business SLO/bounded refill/correct orders. |
+| E-02 / P1 | B-01下订单→DB commit→outbox→SB；核committed订单、保留outbox、最终唯一consumer effect/排积压；无已证应用模式不称跨服务原子。 | B-01 during order→DB commit→outbox→SB; prove committed order/retained outbox/eventual unique consumer effect/backlog drain; no cross-service atomicity without a proven app pattern. |
+| E-03 / P1 | K-01下真实consumer与B-04/H-03有限cohort，只一个Pod故障；对账重启前ack、retry/redelivery、每ID唯一durable downstream effect。 | K-01 on actual consumer with bounded B-04/H-03 cohort and one Pod fault; reconcile pre-restart acks/retries/redelivery and unique durable downstream effects per ID. |
+
+<a id="7-safety-permissions-stopping-and-restoration"></a>
+## 7. 授权、执行、停止与恢复 / Authorization, Execution, Stopping and Restoration
+
+### 7.1 完整阶段标准步骤 / Full-phase execution steps
+
+当前原生先行按§0.6最短流程，不新增SDK/账本/observer门槛；以下完整infra/business仍保留全部安全与验收要求。文档批准不授权部署/流量/故障，已授权正常前置可一起准备，扩大/破坏/共享生命周期另审。
+Current native-first work follows §0.6 without new SDK/ledger/observer gates; full infra/business retains the following safety/acceptance contract. Document approval does not authorize deployment/traffic/faults. Ordinary prerequisites within an approved scope may be prepared together; expansion/destruction/shared lifecycle needs separate review.
+
+| 步骤 / Step | 中文操作与必要记录 | Corresponding English operation and records |
+| --- | --- | --- |
+| 1 资格 / Qualification | ID/variant/phase、真实目标/消费者/排除、catalog/schema/region/SKU/HA、identity/权限、数值预算/窗口/cost、恢复operator；无冲突维护/运行。 | ID/variant/phase, actual targets/consumers/exclusions, catalog/schema/region/SKU/HA, identities/rights, numeric budgets/window/cost and recovery operator; no conflicting maintenance/runs. |
+| 2 审plan / Plan review | 固定工具/readonly lock、fmt/validate/相关tests/lint/policy；owning state私有saved plan审create/update/delete/replace、RBAC/network/cost。 | Pinned tools/readonly lock, fmt/validate/targeted tests/lint/policy; private owning-state saved plan reviewed for create/update/delete/replace, RBAC/network/cost. |
+| 3 部署发现 / Deploy/discover | 仅授权同一saved plan，核provisioning/真实RBAC传播/发现排除/实体实例；保留原安装/state，无schedule/run。 | Apply only the authorized reviewed saved plan; verify provisioning/actual RBAC propagation/discovery exclusions/entities/instances. Preserve installation/state, no schedule/run. |
+| 4 基线 / Baseline | 云端AKS技术或真实业务流、独立control/ledger/observer、容量/retention/保护/samples/deadline；演练通知/独立恢复，ConfigMap脚本不等于可用stop链。 | Cloud AKS technical/real business flow, independent control/ledger/observer, capacity/retention/protection/samples/deadlines; rehearse notification/independent recovery. ConfigMap scripts are not an operational stop path. |
+| 5 单故障 / One fault | 重查动态Pod/node/VMSS/entity最大匹配与授权后显式启动；不Terraform/provisioner/pipeline自动run，不自动加压/restart/failover/修权限。 | Recheck dynamic Pod/node/VMSS/entity maximum matching and approval, then explicitly start; no Terraform/provisioner/pipeline auto-runs or auto-pressure/restarts/failovers/permission fixes. |
+| 6 观察 / Observe | Chaos/operation、guest/events、protocol/metrics关联injection/impact/alert/decision；未命中/不足强度/Skipped缺证据不通过。 | Correlate Chaos/operations, guest/events and protocol/metrics across injection/impact/alert/decision; missed/under-strength/Skipped effects do not pass. |
+| 7 停止恢复 / Stop/restore | 独立通知operator，Cancelable/Continuous移除并实证；Discrete/transition只按获批runbook、不竞争failover；恢复原entity/network或明确接受new primary。 | Notify independent operator, remove Cancelable/Continuous effects with proof; Discrete/transitions follow approved runbook, no competing failover. Restore prior entity/network state or explicitly accept new primary. |
+| 8 稳定清理 / Sustain/clean | 逐窗口phase标准/数据/HA/容量/backlog/规则无残留，private scoped plan调查drift不自动apply；只清owned PID/rule/file/Job/IAM/临时资源。 | Windowed phase criteria/data/HA/capacity/backlog/no residue; investigate drift via private scoped plan, no automatic apply. Clean only owned PIDs/rules/files/Jobs/IAM/temporary resources. |
+| 9 报告 / Report | 每variant/phase中文+对应英文依据、真实结果/限制/私有证据；Future/Unselected/NotRun不填Passed。 | Per-variant/phase Chinese plus corresponding English rationale, actual verdict/limitations/private evidence; Future/Unselected/NotRun are not Passed. |
+
+部署身份、Workspace runtime、operator、业务workload分离；custom role按验证输出最小目标授权，Reader与Action/cluster operator不同。实验窗口避免Terraform/GitOps纠正仅故意临时状态，不关闭无关controller或永久宽ignore_changes。模拟/native机制缺支持先另审，不用旧chaos run或多Action模板冒充授权。
+Separate deployer, Workspace runtime, operator and app identities. Derive custom least-privilege target rights from validation; Reader differs from Action/cluster-operator rights. During approved windows prevent correction of intentional temporary state only, without disabling unrelated controllers or broad permanent ignore_changes. Unqualified simulation/native mechanisms require separate review, not old chaos run examples or multi-Action-template authorization.
+
+### 7.2 停止阈值与恢复完成 / Stop thresholds and recovery completion
+
+以下业务阈值待执行前调优映射到真实observer/检测预算/operator；预期依赖失败不自动终止，隔离/数据/恢复失控必须停止。原生阶段预算见§0.6。
+Tune the following business thresholds before execution and map each to actual observers/detection budgets/operators. Expected dependency failures are not automatic aborts; loss of containment/integrity/recovery requires stopping. Native-phase budgets are in §0.6.
+
+| 中文停止条件 | Corresponding English stop condition |
 | --- | --- |
-| Passed | Actual intended fault affected the approved target/traffic; the selected `infra` or `business` phase's criteria and integrity met; restoration verified. Always record phase; infra pass is not full application resilience. |
-| Failed | Fault ran but a required criterion failed, containment was violated, or recovery failed. |
-| Inconclusive | Fault missed real traffic, evidence was insufficient, or the run was skipped without proving resilience. |
-| Blocked | The current selected target/mechanism has an evidenced incompatibility or reproduced unresolved preflight failure; fault was not executed. Include scope, evidence and remediation. Ordinary missing configuration/verification/authorization is a preparation status with `execution=NotRun`, not an automatic Blocked verdict. Existing full-phase runner rejection results retain their own evidence and safety gates. |
+| 任一未授权目标/control受损、ack持久数据丢失、重复业务effect、破坏事务或异常腐败/假成功。 | Any unauthorized/control impact, lost acknowledged durable data, duplicate business effects, broken transactions, corruption or false success. |
+| control成功<99%持续60秒，或p95>2倍基线60秒；retry attempt rate>3倍基线30秒。 | Control success <99% for 60 seconds or p95>2× baseline for 60 seconds; retry attempt rate >3× baseline for 30 seconds. |
+| 非预期目标/后端CPU或memory>80%、连接>实测上限80%，持续60秒；压力目标预期高值另按授权。 | Unexpected target/backing CPU or memory >80%, or connections >80% of verified limit, for 60 seconds; expected pressure-target values follow approval. |
+| SB backlog达5000或实体容量70%先到者；EH/RocketMQ按每partition/time/bytes/retention数字上限，不照抄队列数。 | SB backlog reaches 5,000 or 70% entity capacity, whichever first; EH/RocketMQ use numeric per-partition/time/bytes/retention caps, not queue counts. |
+| observer stale>15秒、恢复/观察访问丢失、窗口/成本/匹配范围超限。 | Observer stale >15 seconds, lost recovery/observation access, or window/cost/matching overrun. |
 
-Include a Chinese explanation of the evidence or blocker. A Chaos `Succeeded` is not an infra or business Passed. Static Terraform validation, plan-only tests, Ready pods, simulated-impact configuration and local probes are not cloud fault acceptance.
+availability evaluator仅样本窗口/silence/monitor budget/可选latency-consecutive-failure，不实现全部时间规则/CPU/backlog/integrity、不Cancel/restore；其Passed不是case Passed。缺证据Inconclusive并停止升级，不伪装健康。Continuous/Cancelable停止也须验证效果消失；restart/flush/unlink/failover无undo，不发竞争切换。
+The availability evaluator covers sample windows/silence/monitor budgets/optional latency-consecutive failures, not every time rule/CPU/backlog/integrity and not cancellation/restoration. Its Passed is not case Passed. Missing evidence means Inconclusive plus stop/escalation, not healthy fallback. Continuous/Cancelable stopping still requires effect-removal proof; restart/flush/unlink/failover has no undo, and no competing transition is allowed.
 
-**Historical evidence for the original consolidation:** Repository configuration and official Workspaces catalog, targeting/ARM semantics, AKS node/extension guidance, Managed Redis geo-replication and Storage/Service Bus recovery documentation were reviewed without cloud mutation. Subsequent native discovery, reviewed configuration deployment, current metadata and validation evidence are recorded in §0.5; this historical paragraph does not override them. No fault, traffic or cloud recovery execution is claimed by this document. Documentation checks do not establish runtime Passed.
+恢复完成：实际网络/协议正常、原状态或获接受新primary、HA/replication/容量正常、cache回暖、backlog/DLQ/全部attempt-ack-unknown对账；完整infra每窗口技术/control通过，business持续10分钟SLO/不变量通过，互不替代。private drift审查不自动apply恢复旧拓扑，只清owned资源保留证据，不destroy代替停止/恢复。
+Recovery completion requires actual network/protocol health, prior state or deliberately accepted new primary, healthy HA/replication/capacity, cache warm-up, backlog/DLQ/all attempt-ack-unknown reconciliation. Full infra needs every technical/control window; business needs ten minutes of SLO/invariants, without substitution. Review private drift without auto-applying old topology, clean only owned resources and retain evidence; destroy is not cancellation/recovery.
 
-## 10. Decisions and completion checklist
+<a id="8-dependency-ordered-delivery-and-execution-waves"></a>
+## 8. 实施任务与执行批次 / Implementation Tasks and Execution Waves
 
-The draft proposes the following; change them during review:
+以下为完整阶段工程路径，不新增当前原生测试前置；已有安装不重复预算/部署，已知geo/Pod阻塞不阻塞独立合格PaaS。
+These are full-phase engineering paths, not new current native prerequisites. Do not re-budget/redeploy existing installations; geo/Pod gaps do not block independently eligible PaaS cases.
 
-1. Freeze selected product/case variants/phases under §0, beginning with one eligible infra case. Distinguish both Redis products, SQL HA/PITR, Blob-only results, Service Bus and Event Hubs; Cosmos/broker business remain unselected.
-2. Reference existing approved isolated targets and ownership; confirm regions/SKUs/HA/private access and prerequisite evidence without re-provisioning.
-3. Confirm phase-specific technical or business thresholds, sampling, deadlines/retries, stop/recovery, cost and reconciliation before traffic authorization; deferred business SLO is not an extra infra gate.
-4. Select one Wave 1 case and authorize its configuration/traffic/run/recovery separately. Destructive/account-wide/regional cases stay opt-in; deployment never authorizes execution.
-5. Choose later recovery scope and exact data-loss/irreversible-operation contract; include flush/geo-linked scope, unlink/rejoin, PITR target, account failback and messaging regional promotion as applicable.
-6. Assign operator/evidence/recovery owners, detection budget, cost ceiling, maintenance window and privately retained results.
+| Task / 依赖 / Dependency | 中文交付与出口 | Corresponding English deliverable and exit |
+| --- | --- | --- |
+| T0 / 无 / none | app/platform owner确认私有ID/variant/phase/target/state、契约/资格/cost/window/恢复授权；各case明确合格或具体缺项。 | App/platform owner freezes private ID/variant/phase/target/state, contract/eligibility/cost/window/recovery approval; each case qualified or explicitly pending. |
+| T1 / T0 | Terraform owner核原state/迁移/locked schema/plan，无重复归属/扩权限/意外替换；bootstrap/migration仅另行必要且获批。 | Terraform owner checks existing state/migration/locked schema/plan, no duplicate ownership/widening/replacement; bootstrap/migration only if independently necessary/approved. |
+| T2 / T0+该case获批前置 / approved case prerequisites | app/evidence owner建技术control/协议/独立ledger/采样/retention/stop通知，后续business adapter；获批基线与silence/恢复演练通过，Job默认off。 | App/evidence owner delivers technical control/protocol/independent ledger/sampling/retention/stop notification, later business adapters; approved baseline/silence/recovery rehearsals pass, Jobs default off. |
+| T3 / T1 | Chaos owner核service-direct参数/目标/最小rights、传播后Validate，解析/排除匹配manifest；无auto-repair/run，写配置不依赖T2。 | Chaos owner verifies service-direct parameters/targets/minimal rights, validates after propagation and matches resolved/excluded lists to manifest; no auto-repair/run, authoring independent of T2. |
+| T4 / T1+T0目标 / target | AKS operator引用已装extension/connection/federation/ownership，核架构/镜像/admission/cleanup；不重复安装，runtime另等T2/T5。 | AKS operator references installed extension/connection/federation/ownership, qualifies architecture/images/admission/cleanup; no duplicate install, runtime waits for T2/T5. |
+| T5 / T2+适用T3或T4 / applicable T3 or T4 | operator/app owner审配置/流量/run/recovery授权后单case云端验收；真实作用/隔离/阶段/数据/持续恢复，诚实结果不按数量完成。 | Operator/app owner reviews configuration/traffic/run/recovery approval then qualifies one cloud case; actual impact/containment/phase/data/sustained recovery, honest verdicts rather than count-based completion. |
+| T6 / 相关T5干净恢复+扩大范围T0 / clean relevant T5 + expanded T0 | service owner逐case扩展；destructive/DR/agent/node另审支持/cost/ownership，不自动加压/重复。 | Service owner expands per case; separately reviews destructive/DR/agent/node support/cost/ownership, no automatic escalation/repetition. |
+| T7 / 每次T5/T6 / each T5/T6 | evidence/Terraform owner对账、private drift、owned清理、报告/regression；未解drift/data指定owner/下一步。 | Evidence/Terraform owner reconciles, reviews private drift, cleans owned assets and reports/regresses; unresolved drift/data has an owner/next step. |
 
-After review, the next deliverable is implementation-ready case/runbook configuration and a reviewed deployment plan, not immediate fault execution.
+代码配置变更同时补约束/行为tests，静态fmt/readonly backend-disabled init/validate/mock/unit/TFLint/policy不算云验收；不全局suppress。真实apply tests、云plan/deploy/流量/fault分别授权。T1/T2可在T0后并行，但基线等该case前置；T3/T4独立分支。
+Add focused constraint/behavior tests with corresponding code changes; static fmt/readonly backend-disabled init/validate/mocks/units/TFLint/policy are not cloud acceptance, with no global suppressions. Real apply tests/cloud plans/deployments/traffic/faults need relevant separate approval. T1/T2 may progress after T0, but baseline waits for case prerequisites; T3/T4 are independent branches.
 
-### Review corrections incorporated
+| Wave | 中文范围与出口 | Corresponding English scope and exit |
+| --- | --- | --- |
+| 0 无故障 / No fault | T0–T4与该case前置/基线/stop演练；缺项明确不影响其他合格case。 | T0–T4, case prerequisites/baseline/stop rehearsal; explicit gaps do not block other eligible cases. |
+| 1 最小影响 / Minimal | 合格A-01/C-01/S-01/B-01/H-01/K-01，真实作用/完整infra隔离数据恢复；无注入连接不能通过。 | Eligible A-01/C-01/S-01/B-01/H-01/K-01 with actual impact/full infra containment/data/recovery; connectivity without injection cannot pass. |
+| 2 entity/HA | C-02/C-04/C-05、M-02/M-01/P-01、R-02后R-01/R-03、B-02/B-03/H-02/H-04，V-09另审；真实恢复/Discrete清理，无自动重复。 | Applicable client/entity/HA cases, R-02 before R-01/R-03 and separately reviewed V-09; actual restoration/Discrete cleanup, no automatic repeats. |
+| 3 pressure/node | 合格K-02–K-06、V-03–V-06/V-08、N-02–N-05/N-07、P-02；I-01/N-06独立设计审查；agent/实例/容量/规则合格、逐级效果。 | Qualified Pod/VM/node-pressure/network cases and P-02; I-01/N-06 need separate design review. Require agent/instance/capacity/rule qualification and progressive measured effects. |
+| 4 destructive/geo | V-07/V-10、R-04/A-02、S-04/S-02/S-03、H-05/H-06/M-04及另选PITR/geo/zone；逐目标数据/备份/复制/role/cost/不可逆恢复授权，不自动建目标。 | Separately qualified destructive/recovery/geo/replica and additionally selected PITR/zone cases; per-target data/backup/replication/role/cost/irreversible-recovery approval, no automatic fixtures. |
+| 5 business/future | E-family、原business契约；D/V broker另选、L/G有真实获批目标才测；完整业务不被infra替代。 | E-family/original business contracts; D/V broker only if selected and L/G only with actual approved targets; infra never substitutes for business. |
 
-- Replaced contradictory historical inventories/provider blockers with current source plus clearly labeled prior installation evidence; no historical check is silently re-certified.
-- Preserved all original 43 case IDs; added 27 distinct definitions and mapped all 39 supplied scenarios, including future LB/Gateway, unsupported node/mesh branches and separate infra/broker/business phases.
-- Separated official Action support from the repository's allowlist, extension IDs, agent/native drills and client-path simulations.
-- Made application success, sampling, unknown writes, RTO/RPO and sustained recovery measurable; limited HTTPS/availability-stop claims to their actual scope.
-- Merged dependency ordering, ownership/state/migration, exact RBAC/target filtering, stop/recovery and private evidence into one acceptance contract.
+低风险先一次，修复后建议三次连续干净运行；destructive/DR重复另审。成本包含HA/两个Redis/geo成员、SB Premium secondary、geo storage、私网/Jobs/Chaos/monitor/evidence/temp恢复，按region/SKU/量/时长估计、硬上限与cleanup owner，无默认批准价格。SDK/retry/network变化重跑约定回归，DR按季度或业务风险审查；coverage仅信息信号非全局百分比门槛。
+Start low-risk cases once, then seek three consecutive clean runs after fixes; destructive/DR repetition needs separate review. Budget HA/both Redis products/geo members/SB Premium secondary/geo storage/private networking/Jobs/Chaos/monitor/evidence/temporary recovery by region/SKU/volume/duration, with hard caps/cleanup owners and no assumed price approval. Regress agreed cases after SDK/retry/network changes; review DR quarterly or by business risk. Coverage is informational, not a global percentage gate.
 
-### Campaign completion
+<a id="9-evidence-and-result-classification"></a>
+## 9. 证据与结果 / Evidence and Verdicts
 
-The operator has conditionally authorized cloud testing and requested reports. Current selection is §0: infra-first, Cosmos/broker business unselected, LB/Gateway future. Each selected ID/variant/phase needs real fault/impact/integrity/recovery evidence; a full business-success report waits for the later business phase. No static/reference-client or platform-health evidence completes the campaign.
+### 9.1 私有manifest与报告 / Private manifest and report
 
-- [ ] Selected-case manifest, owners, support/identity/ownership and approvals are complete.
-- [ ] Relevant current static/policy/plan checks are recorded separately from cloud evidence; no unexpected delete/replace/network/RBAC expansion.
-- [ ] No-fault baseline for the selected phase and independent stop/recovery rehearsal are proven in cloud AKS.
-- [ ] Each selected run has actual impact/containment, phase-specific technical/business and data evidence, and an honest verdict.
-- [ ] Fault effects removed; healthy topology/capacity, reconciled data/backlog and sustained phase-specific recovery verified.
-- [ ] Private post-recovery drift reviewed; only approved owned temporary resources cleaned up; evidence retained.
-- [ ] Failed/Blocked/Inconclusive and unselected coverage gaps have reasons/owners; no claim that the entire matrix is certified.
+稳定case key+唯一private run reference，逐variant/phase必填；不适用/缺项说明原因，不留空或虚构Passed。原生记录与完整阶段模板分别使用，不以完整business字段阻塞当前原生。
+Use stable case keys plus unique private run references with required per-variant/phase fields; explain inapplicability/gaps instead of blanks/fabricated Passed. Native records and full-phase templates are distinct; full-business fields do not block current native work.
 
-This checklist is a development/operational evidence gate, not an extra customer sign-off requirement. This documentation merge completes only the planning deliverable.
+| 类别 / Group | 中文必填 | Corresponding English required fields |
+| --- | --- | --- |
+| 身份范围 / Identity/scope | case/variant/hypothesis/flow-SDK、commit/worktree、environment/state、授权/operator私有、真实direct/indirect目标/排除。 | Case/variant/hypothesis/flow-SDK, commit/worktree, environment/state, private authorization/operator, exact direct/indirect targets/exclusions. |
+| 机制 / Mechanism | simulation/service-direct/extension/agent/native drill、Workspace region/Action/API/schema参数、实际entity/pod/node、强度/暴露/最大影响。 | Mechanism classification, Workspace region/Action/API/schema parameters, actual entities/Pods/nodes, intensity/exposure/maximum impact. |
+| 阶段 / Phase | infra技术/health/read-write/integrity/窗口samples/deadline/retry/recovery/retention；business实际flow/SLO/RTO/RPO/不变量/幂等/consistency；后续字段明确deferred。 | Infra technical/health/read-write/integrity/window samples/deadline/retry/recovery/retention; business flow/SLO/RTO/RPO/invariants/idempotency/consistency; explicitly mark deferred fields. |
+| 安全 / Safety | 数字阈值/observer/检测预算/owner、独立恢复、原entity/topology、backup/replication、批准stop/recovery/cleanup/cost/window。 | Numeric thresholds/observers/detection budgets/owners, independent recovery, prior entity/topology, backup/replication and approved stop/recovery/cleanup/cost/window. |
+| 观察 / Observation | UTC时间线+monotonic elapsed、真实impact/control/target metrics/raw counts、alert/stop交接、ack/unknown对账、恢复/drift、hash/retention。 | UTC timeline+monotonic elapsed, actual impact/control/target metrics/raw counts, alert/stop handoff, ack/unknown reconciliation, recovery/drift, hashes/retention. |
+| 结论 / Decision | 原生run/Action、管理面影响恢复、完整infra/business分列，双语依据/限制、owner/下一步/未解问题/私有位置。 | Separate native run/Action, management impact/recovery and full infra/business verdicts, with bilingual rationale/limitations, owner/next step/unresolved issues/private location. |
 
-## Official references
+账本必须在故障依赖/canary lifecycle外，重启不能抹ack真值；按契约核attempt/ack/unknown/persisted/consumed/failed，retry不等于唯一ID。原始run/日志/state/plan/kubeconfig/端点token/秘密只私有；公开脱敏真实资源/registry/repository/context/地址/tenant/subscription/run/request/contact/credentials。私有运行输入、代码和证据统一当前项目，路径按runbook §8.1，不复制为第二套清单。
+Ledgers must survive outside faulted dependencies/canary lifecycles; restarts cannot erase ack truth. Reconcile attempt/ack/unknown/persisted/consumed/failed under contract; retries are not unique IDs. Keep raw runs/logs/state/plans/kubeconfigs/tokenized endpoints/secrets private; redact real resources/registries/repositories/contexts/addresses/tenant/subscription/run/request/contact/credentials publicly. Keep private inputs/code/evidence in this project under runbook §8.1, not a second catalog.
 
-The Action catalog, Workspaces overview/targeting/ARM reference and least-privilege guidance, AKS node/extension and parameter reference, Cosmos DB reliability, Managed Redis geo-replication and Storage/Service Bus Geo-Replication pages were rechecked on **2026-11-23**. Other service background references below were carried forward from the original 2026-11-20 review and must be refreshed for selected cases; documentation support is never live subscription qualification.
+### 9.2 结果枚举 / Verdicts
 
-- [Well-Architected reliability testing][waf]
-- [Chaos Studio Workspaces overview][workspaces]
-- [Workspaces supported resources and Action catalog][catalog]
-- [Workspace resource targeting and validation][targeting]
-- [Workspace least-privilege roles][leastpriv]
-- [Workspace Scenario ARM/AzAPI schema][scenario-schema]
-- [AKS extension requirements and known issues][aks-extension]
-- [AKS extension installation and parameter reference][aks-install]
-- [AKS node/VMSS testing][aks-nodes]
-- [Cosmos DB reliability and regional recovery][cosmos-reliability]
-- [MySQL Flexible Server HA][mysql-ha]
-- [MySQL Flexible Server backup and restore][mysql-backup]
-- [PostgreSQL Flexible Server HA][pg-ha]
-- [PostgreSQL Flexible Server backup and restore][pg-backup]
-- [Azure Cache for Redis reboot/flush administration][cache-admin]
-- [Azure Managed Redis architecture best practices][amr-waf]
-- [Azure Managed Redis active geo-replication and force-unlink][amr-geo]
-- [Storage DR planning and support restrictions][storage-dr]
-- [Storage customer-managed planned failover][storage-planned]
-- [Storage failover initiation prerequisites][storage-start]
-- [Service Bus message transfer, locks, and settlement][sb-locks]
-- [Service Bus Geo-Replication][sb-georep]
-- [Service Bus Geo-Disaster Recovery][sb-geodr]
-- [Event Hubs metadata-only Geo-DR][eh-geodr]
-- [Event Hubs data Geo-Replication][eh-georep]
+| Result | 中文判定 | Corresponding English meaning |
+| --- | --- | --- |
+| Passed | 真实获批目标/流量受预期故障，所记录phase标准、完整性、恢复均有证据；管理面Passed仅该层，不是完整infra/business。 | Intended fault affected approved target/traffic with evidenced recorded-phase criteria/integrity/recovery. Management-plane Passed covers that layer only, not full infra/business. |
+| Failed | 已运行但标准失败、隔离越界或恢复失败。 | Executed fault failed criteria, violated containment or failed recovery. |
+| Inconclusive | 无真实影响/流量命中、证据不足、未证韧性或Skipped；完整未验证结果明确注明。 | Missing actual impact/traffic, insufficient evidence, unproven resilience or Skipped; explicitly mark full unverified outcomes. |
+| Blocked | 已证实目标/机制不兼容或复现未解preflight，未执行；说明范围/证据/补救。普通配置/验证/授权待办用准备状态+NotRun，现有runner拒绝门槛不变。 | Evidenced target/mechanism incompatibility or reproduced unresolved preflight failure with no execution; specify scope/evidence/remedy. Ordinary configuration/verification/authorization gaps use preparation status+NotRun; existing runner rejection gates remain unchanged. |
+
+原生Succeeded不是完整Passed；静态validation/mock/plan/Ready/本地probe不算云故障验收。coverage若计百分比须披露固定selected-case分母，不把未选/待办/Skipped/Blocked算成功。历史“未启动故障”只描述准备阶段；当前以§0.5及原生报告两轮证据为准，不能覆盖已执行事实。
+Native Succeeded is not full Passed; static validation/mocks/plans/Ready/local probes are not cloud fault acceptance. Disclose a fixed selected-case denominator for any coverage percentage and never count unselected/pending/Skipped/Blocked as success. Historical “no fault started” statements describe preparation only; §0.5 and the report's two-round evidence govern current execution facts.
+
+<a id="10-decisions-and-completion-checklist"></a>
+## 10. 完成检查 / Completion Checklist
+
+当前先保留已执行9项结果/限制，Redis优先补独立影响证据；AKS先补既有私网观察/动态放置/恢复证据，不以重新执行或新增应用掩盖缺项。其余按§0.5资格/授权推进，完整业务另阶段。此文档整理只交付清晰同步清单，不执行云操作，不新增客户签署门槛。
+Retain the nine executed cases' results/limitations; prioritize independent Redis impact evidence. Obtain existing private AKS observation/dynamic-placement/recovery evidence first, rather than hiding gaps through re-execution/new apps. Progress remaining cases by §0.5 qualification/authorization, with business in a later phase. This documentation change delivers a clear synchronized catalog only, executes no cloud operations and adds no customer sign-off gate.
+
+- [ ] 目标/variant/phase/owner、原state归属、原生支持/身份/授权完整。 / Targets/variants/phases/owners, original state ownership, native support/identity/approval complete.
+- [ ] 静态/policy/plan结果与云证据分列，无意外delete/replace/网络/RBAC扩大。 / Static/policy/plan results separated from cloud evidence, no unexpected delete/replace/network/RBAC expansion.
+- [ ] 所选完整阶段云端基线/独立stop/recovery已演练，原生层不假称完成完整门槛。 / Selected full-phase cloud baseline/independent stop/recovery rehearsed, without treating native evidence as full gates.
+- [ ] 各实际run命中/隔离/阶段数据/恢复/结果诚实可审计；70定义不等于70通过。 / Each run has auditable impact/containment/phase data/recovery/honest verdict; 70 definitions do not mean 70 passes.
+- [ ] 实际效果消失、HA/容量/数据/backlog/窗口恢复证据完整。 / Actual effect removal, HA/capacity/data/backlog/windowed recovery evidenced.
+- [ ] private drift审查、仅owned临时资源清理、原始证据保留。 / Private drift reviewed, owned temporary assets only cleaned, raw evidence retained.
+- [ ] Failed/Blocked/Inconclusive/NotRun/Unselected/Future均原因与owner明确，无全矩阵认证。 / All failures/gaps/unselected/future cases have reasons/owners, no full-matrix certification.
+- [x] 全部70编号与39中文映射保留，中文/英文同结构同步；英文额外场景已补中文。 / All 70 IDs and 39 Chinese mappings retained, with synchronized bilingual structure and Chinese counterparts for additional English cases.
+
+## 官方参考 / Official References
+
+沿用2026-11-23对catalog/Workspace/targeting/ARM/least-privilege、AKS/geo/storage等的复核记录；其他背景链接来自2026-11-20，实施时更新所选case。本文语言整理未重新联网核验产品支持，文档支持不等于当前订阅/资源资格。
+Retain recorded 2026-11-23 reviews of catalog/Workspace/targeting/ARM/least privilege and AKS/geo/storage guidance; other background links originate from 2026-11-20 and require refresh for selected cases. This language edit does not freshly verify online product support; documentation is not live subscription/resource qualification.
+
+- [Well-Architected 韧性测试 / Reliability testing][waf]
+- [Workspaces 概述 / Overview][workspaces]
+- [支持资源与 Action catalog / Supported resources and Actions][catalog]
+- [目标筛选与验证 / Targeting and validation][targeting]
+- [最小权限 / Least-privilege roles][leastpriv]
+- [Scenario ARM/AzAPI schema][scenario-schema]
+- [AKS extension 前置与已知限制 / Requirements and known issues][aks-extension]
+- [AKS extension 安装与参数 / Installation and parameters][aks-install]
+- [AKS node/VMSS 测试 / Testing guidance][aks-nodes]
+- [Cosmos DB 可靠性与区域恢复 / Reliability and regional recovery][cosmos-reliability]
+- [MySQL HA][mysql-ha] / [备份恢复 / Backup and restore][mysql-backup]
+- [PostgreSQL HA][pg-ha] / [备份恢复 / Backup and restore][pg-backup]
+- [Legacy Redis reboot/flush 管理 / Administration][cache-admin]
+- [Managed Redis 架构 / Architecture][amr-waf] / [Geo-replication / force-unlink][amr-geo]
+- [Storage DR 限制 / Restrictions][storage-dr] / [planned failover][storage-planned] / [前置 / Prerequisites][storage-start]
+- [Service Bus locks/settlement][sb-locks] / [Geo-Replication][sb-georep] / [Geo-DR][sb-geodr]
+- [Event Hubs metadata Geo-DR][eh-geodr] / [data Geo-Replication][eh-georep]
 
 [waf]: https://learn.microsoft.com/en-us/azure/well-architected/reliability/reliability-test
 [workspaces]: https://learn.microsoft.com/en-us/azure/chaos-studio/chaos-studio-workspaces-overview
