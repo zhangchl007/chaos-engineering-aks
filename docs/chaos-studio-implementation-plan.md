@@ -10,7 +10,7 @@
 
 | 权威文档 / Source | 中文职责 | Corresponding English responsibility |
 | --- | --- | --- |
-| [统一测试清单 / Canonical case catalog](./chaos-test-and-coverage-plan.md) | 全部70个定义、原43编号和39中文场景映射、范围/准备状态/验收。 | All 70 definitions, 43 original IDs and 39 Chinese scenario mappings, scope/preparation/acceptance. |
+| [中文测试场景与能力清单 / Canonical case catalog](./chaos-test-and-coverage-plan.md) | 全部70个场景编号、Chaos Studio 能力分类、当前限制及实际完成情况；执行细节见操作手册。 | All 70 case IDs, Chaos Studio capability classifications, current limits and recorded completion; execution details remain in the runbook. |
 | [部署与测试手册 / Deployment and test runbook](./terraform-deployment-runbook.md#chaos-test-operations) | 原 state、配置、安装、运行、停止恢复、项目代码与私有证据的操作步骤。 | Procedures for original state, configuration, installation, execution, stopping/restoration, project code and private evidence. |
 | [实际原生报告 / Native execution report](./chaos-studio-native-test-report.md) | 两轮已执行结果、观测缺口、收尾、未运行项及当前 private AKS 限制。 | Results of both executed rounds, observation gaps, final checks, unexecuted cases and current private AKS limitations. |
 

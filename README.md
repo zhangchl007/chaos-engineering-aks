@@ -2,9 +2,9 @@
 
 This repository prepares isolated non-production infrastructure and declarative Chaos Studio configuration. **Creating configuration never starts a fault.** The deployment runbook records prior Workspace/AKS extension installation; installation alone is not fault qualification or business-resilience proof.
 
-Read the canonical [统一 Chaos 测试用例与覆盖规范](./docs/chaos-test-and-coverage-plan.md), [implementation batch plan](./docs/chaos-studio-implementation-plan.md) and [deployment and migration runbook](./docs/terraform-deployment-runbook.md) first. The single case catalog preserves 43 original IDs and adds 27 definitions, mapping all 39 supplied scenarios; current selection is infra-first, with business, unselected and future cases explicitly distinguished. Existing environments must not adopt the changed configuration without a separately reviewed migration plan.
+Read the canonical [中文测试场景与能力清单](./docs/chaos-test-and-coverage-plan.md), [implementation batch plan](./docs/chaos-studio-implementation-plan.md) and [deployment and migration runbook](./docs/terraform-deployment-runbook.md) first. The single case catalog preserves all 70 designed case IDs and distinguishes current execution from business, unselected and future coverage. Existing environments must not adopt the changed configuration without a separately reviewed migration plan.
 
-The catalog is also the integrated customer-reference test plan, with a 70-case scope summary and service-specific verification paths. Its [PostgreSQL / PGSQL chapter](./docs/chaos-test-and-coverage-plan.md#service-postgresql) covers planned/forced HA, PITR and five client-path variants, separating proposed acceptance from recorded native results.
+The catalog is a concise Chinese customer reference: each scenario states native support, preview support, partial support, non-native implementation or pending qualification for the current Workspaces/AKS-extension design. Its [PostgreSQL / PGSQL chapter](./docs/chaos-test-and-coverage-plan.md#service-postgresql) includes planned/forced HA, PITR and five client-path variants.
 
 All Chaos operator steps, per-case branches and stop/recovery/report procedures are consolidated in the
 [test runbook](./docs/terraform-deployment-runbook.md#chaos-test-operations).
