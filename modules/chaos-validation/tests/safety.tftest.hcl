@@ -15,6 +15,13 @@ run "preparation_does_not_run_jobs" {
     condition     = length(kubernetes_job_v1.test) == 0
     error_message = "Preparing verification must not execute Jobs."
   }
+  assert {
+    condition = alltrue([
+      for script in ["stop.py", "ledger.py", "business.py", "campaign.py"] :
+      kubernetes_config_map_v1.scripts.data[script] == file(script)
+    ])
+    error_message = "Independent safety/business scripts must be packaged without executing Jobs or traffic."
+  }
 }
 
 run "authorized_job_meets_restricted_profile" {
@@ -30,6 +37,7 @@ run "authorized_job_meets_restricted_profile" {
       kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].security_context[0].seccomp_profile[0].type == "RuntimeDefault" &&
       kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].node_selector["kubernetes.io/os"] == "linux" &&
       !kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].container[0].security_context[0].allow_privilege_escalation
+      && kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].container[0].command == tolist(["python3", "/scripts/probe.py"])
     )
     error_message = "Explicitly enabled Jobs must satisfy restricted Pod admission and target Linux."
   }
@@ -79,12 +87,17 @@ run "finite_baseline_window" {
         maximum_p95_seconds         = 0.5
         maximum_p99_seconds         = 1
         job_deadline_seconds        = 1200
+        stream_evidence             = true
       }
     }
   }
   assert {
     condition     = kubernetes_job_v1.test["application"].spec[0].active_deadline_seconds == 1200
     error_message = "A baseline must have a feasible, explicitly bounded observation deadline."
+  }
+  assert {
+    condition     = jsondecode(kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].container[0].env[0].value).stream_evidence
+    error_message = "Explicit streaming must reach the probe through its typed flow configuration."
   }
 }
 

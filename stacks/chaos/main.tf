@@ -68,7 +68,7 @@ variable "scenarios" {
     locations        = optional(set(string), [])
     zones            = optional(set(string), [])
   }))
-  description = "Approved bounded service-direct definitions."
+  description = "Approved bounded service-direct or agent-qualified VM pressure definitions."
   default     = {}
 }
 variable "permissions" {
@@ -95,6 +95,18 @@ variable "linked_database_allowlist" {
   type        = set(string)
   description = "Additional explicitly approved affected linked databases for Managed Redis unlink."
   default     = []
+}
+
+variable "agent_verified_target_ids" {
+  type        = set(string)
+  description = "Individual VM IDs with verified agent prerequisites, permissions, recovery and indirect workload impact."
+  default     = []
+}
+
+variable "allow_high_pressure_configuration" {
+  type        = bool
+  description = "Opt in to defining VM pressure above 50 percent, not running it."
+  default     = false
 }
 
 variable "aks_extensions" {
@@ -131,20 +143,22 @@ variable "pod_scenarios" {
 }
 
 module "chaos" {
-  source                          = "../../modules/chaos"
-  enabled                         = var.enabled
-  name                            = var.name
-  resource_group_id               = var.resource_group_id
-  location                        = var.location
-  scopes                          = var.scopes
-  scenarios                       = var.scenarios
-  permissions                     = var.permissions
-  excluded_resource_ids           = var.excluded_resource_ids
-  allow_destructive_configuration = var.allow_destructive_configuration
-  linked_database_allowlist       = var.linked_database_allowlist
-  aks_extensions                  = var.aks_extensions
-  pod_scenarios                   = var.pod_scenarios
-  tags                            = { environment = "test", managed_by = "terraform", project = "chaos-workshop" }
+  source                            = "../../modules/chaos"
+  enabled                           = var.enabled
+  name                              = var.name
+  resource_group_id                 = var.resource_group_id
+  location                          = var.location
+  scopes                            = var.scopes
+  scenarios                         = var.scenarios
+  permissions                       = var.permissions
+  excluded_resource_ids             = var.excluded_resource_ids
+  allow_destructive_configuration   = var.allow_destructive_configuration
+  agent_verified_target_ids         = var.agent_verified_target_ids
+  allow_high_pressure_configuration = var.allow_high_pressure_configuration
+  linked_database_allowlist         = var.linked_database_allowlist
+  aks_extensions                    = var.aks_extensions
+  pod_scenarios                     = var.pod_scenarios
+  tags                              = { environment = "test", managed_by = "terraform", project = "chaos-workshop" }
 }
 
 output "configuration_ids" {

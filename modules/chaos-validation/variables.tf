@@ -36,6 +36,7 @@ variable "flows" {
     maximum_p95_seconds         = optional(number)
     maximum_p99_seconds         = optional(number)
     job_deadline_seconds        = optional(number, 900)
+    stream_evidence             = optional(bool, false)
   }))
   description = "Approved real application HTTPS paths. These are availability probes, not database-integrity proof."
   default     = {}

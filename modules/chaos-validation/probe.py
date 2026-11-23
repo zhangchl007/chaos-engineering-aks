@@ -3,10 +3,20 @@ import math
 import os
 import ssl
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+import uuid
+
+
+_output_lock = threading.Lock()
+
+
+def emit(record):
+    with _output_lock:
+        print(json.dumps(record), flush=True)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -14,7 +24,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise urllib.error.HTTPError(req.full_url, code, "Redirects are not approved targets", headers, fp)
 
 
-def measure(url, operations, timeout, interval_seconds=0):
+def measure(url, operations, timeout, interval_seconds=0, emit_sample=None):
     latencies = []
     samples = []
     failures = 0
@@ -34,20 +44,23 @@ def measure(url, operations, timeout, interval_seconds=0):
                 response.read(1024)
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
             success = False
-            print(json.dumps({"event": "request_failed", "error_type": type(error).__name__}))
+            emit({"event": "request_failed", "error_type": type(error).__name__})
         completed = time.monotonic()
         latency = completed - started
         if success and latency > timeout:
             success = False
-            print(json.dumps({"event": "request_failed", "error_type": "RequestDeadlineExceeded"}))
+            emit({"event": "request_failed", "error_type": "RequestDeadlineExceeded"})
         failures += int(not success)
         latencies.append(latency)
-        samples.append({
+        sample = {
             "sequence": sequence,
             "elapsed_seconds": started - observation_started,
             "latency_seconds": latency,
             "success": success,
-        })
+        }
+        samples.append(sample)
+        if emit_sample is not None:
+            emit_sample(sample)
     latencies.sort()
     return {
         "operations": operations,
@@ -63,10 +76,22 @@ def measure(url, operations, timeout, interval_seconds=0):
 
 def main():
     flow = json.loads(os.environ["FLOW"])
+    identity = {
+        "schema_version": 1,
+        "observation_id": uuid.uuid4().hex,
+        "phase": flow.get("phase", "baseline"),
+    }
+    streaming = flow.get("stream_evidence", False)
+    if streaming:
+        emit({**identity, "event": "observation_started", "streams": ["control", "canary"],
+              "operations": flow["operations"]})
     with ThreadPoolExecutor(max_workers=2) as executor:
         pending = {
             name: executor.submit(measure, flow[name + "_url"], flow["operations"],
-                                  flow["request_timeout"], flow.get("interval_seconds", 0))
+                                  flow["request_timeout"], flow.get("interval_seconds", 0),
+                                  (lambda sample, stream=name: emit(
+                                      {**identity, "event": "measurement", "stream": stream, **sample}
+                                  )) if streaming else None)
             for name in ("control", "canary")
         }
         results = {name: future.result() for name, future in pending.items()}
@@ -82,7 +107,8 @@ def main():
         for result in results.values()
     )
     verdict = "Failed" if not passed else "Passed" if enough_observation else "Inconclusive"
-    print(json.dumps({
+    emit({
+        **({**identity, "event": "observation_completed"} if streaming else {}),
         "result": verdict,
         "phase": flow.get("phase", "baseline"),
         "evidence_scope": "HTTPS availability only; not data integrity or fault containment",
@@ -92,7 +118,7 @@ def main():
             "仅应用路径可用性检查通过；完整韧性仍需故障命中、数据对账和持续恢复证据。"
         ),
         "measurements": results,
-    }))
+    })
     return 1 if not passed else 0 if enough_observation else 2
 
 

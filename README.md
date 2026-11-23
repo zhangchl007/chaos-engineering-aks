@@ -1,8 +1,32 @@
 # AKS and Azure Chaos Terraform fixtures
 
-This repository prepares isolated non-production infrastructure and declarative Chaos Studio configuration. **Creating configuration never starts a fault. Nothing has been deployed or run by this implementation.**
+This repository prepares isolated non-production infrastructure and declarative Chaos Studio configuration. **Creating configuration never starts a fault.** The deployment runbook records prior Workspace/AKS extension installation; installation alone is not fault qualification or business-resilience proof.
 
-Read the [coverage review and implementation status](./docs/terraform-chaos-coverage-plan.md), [deployment and migration runbook](./docs/terraform-deployment-runbook.md) and [PaaS test draft](./docs/paas-chaos-test-plan.md) first. Existing environments must not adopt the changed configuration without a separately reviewed migration plan.
+Read the canonical [统一 Chaos 测试用例与覆盖规范](./docs/chaos-test-and-coverage-plan.md), [implementation batch plan](./docs/chaos-studio-implementation-plan.md) and [deployment and migration runbook](./docs/terraform-deployment-runbook.md) first. The single case catalog preserves 43 original IDs and adds 27 definitions, mapping all 39 supplied scenarios; current selection is infra-first, with business, unselected and future cases explicitly distinguished. Existing environments must not adopt the changed configuration without a separately reviewed migration plan.
+
+All Chaos operator steps, per-case branches and stop/recovery/report procedures are consolidated in the
+[test runbook](./docs/terraform-deployment-runbook.md#chaos-test-operations).
+Reusable test tools live in [chaos-validation](./modules/chaos-validation/), declarative fault resources in
+[chaos](./modules/chaos/), and redacted inputs in [environments](./environments/).
+Real test inputs, the nine native execution journals and historical helper sources are retained under
+ignored project-local `local-state/dev/chaos-testing/`; active tools no longer depend on a Copilot session folder.
+No private inputs/evidence, credentials or runtime caches should be committed.
+
+### Git credential safety
+
+Real environment tfvars files are local-only and must remain untracked; only
+redacted `*.example.tfvars` and `*.example.tfvars.json` inputs belong in Git.
+Terraform provider lockfiles remain tracked. State, saved plans, kubeconfigs,
+private keys and credential stores must never be committed.
+
+Historical commits contain credentials in `modules/aks/neolix-kubeconfig`,
+`modules/aks/prod-kubeconfig` and the saved plan `devplan`. Treat those credentials
+as compromised and rotate/revoke them through the authorized Azure/AKS process.
+Removing files from the current index or adding ignore rules does **not** remove
+old commits or revoke credentials. History cleanup requires separately approved,
+coordinated rewriting of every affected branch/tag and remote, followed by a
+secret rescan and collaborator clone cleanup. Do not publish credential values,
+state or plan contents in review comments or remediation reports.
 
 ## Stages and ownership
 
@@ -34,7 +58,7 @@ These outputs are marked `sensitive` so normal plan/apply logs mask them. `-raw`
 
 The reviewed baseline is Terraform CLI **1.15.6**, AzureRM **4.55.0**, AzAPI **2.14.0**, Random **3.7.2**; the cluster stage pins Helm **2.17.0** and Kubernetes provider **2.38.0**. The AzureRM major upgrade and state/interface changes require their own migration review. Existing module input contracts were retained where possible; this is not a drop-in upgrade.
 
-Root defaults keep extra fixtures off. The dev profile enables the existing PaaS, a separate private Azure Cache for Redis, a public-IP jumpserver, and a private RocketMQ VM with pinned images. Original NSG templates remain unchanged and unattached; jumpserver uses a separate SSH access NSG with approved management CIDRs (deny-only when absent). New classic-cache creation requires tenant eligibility confirmation and uses a dedicated AKS workload identity; existing legacy references remain read-only. RocketMQ cloud-init installs a checksum-pinned native runtime, not a fault. Cloud business readiness and idempotent replan must be verified after an authorized apply. AGFC public frontend, retired ingress/chart profiles, destructive configuration and verification Job execution each have separate opt-ins. Private AKS extension support is **Blocked**, not silently bypassed using a public cluster or classic Chaos Mesh.
+Root defaults keep extra fixtures off. The dev profile enables the existing PaaS, a separate private Azure Cache for Redis, a public-IP jumpserver, and a private RocketMQ VM with pinned images. Original NSG templates remain unchanged and unattached; jumpserver uses a separate SSH access NSG with approved management CIDRs (deny-only when absent). New classic-cache creation requires tenant eligibility confirmation and uses a dedicated AKS workload identity; existing legacy references remain read-only. RocketMQ cloud-init installs a checksum-pinned native runtime, not a fault. Cloud business readiness and idempotent replan must be verified after an authorized apply. AGFC public frontend, retired ingress/chart profiles, destructive configuration and verification Job execution each have separate opt-ins. The private AKS extension is installed according to the [recorded evidence](./docs/terraform-deployment-runbook.md); private-cluster functional fault qualification remains unproven. Do not bypass this gate using a public cluster or classic Chaos Mesh.
 
 ## Local configuration checks
 

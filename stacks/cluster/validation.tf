@@ -17,6 +17,7 @@ variable "verification" {
       maximum_p95_seconds         = optional(number)
       maximum_p99_seconds         = optional(number)
       job_deadline_seconds        = optional(number, 900)
+      stream_evidence             = optional(bool, false)
     })), {})
   })
   default = {}

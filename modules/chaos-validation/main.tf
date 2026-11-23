@@ -28,7 +28,13 @@ resource "kubernetes_config_map_v1" "scripts" {
     name      = "verification"
     namespace = kubernetes_namespace_v1.test.metadata[0].name
   }
-  data = { "probe.py" = file("${path.module}/probe.py") }
+  data = {
+    "probe.py"    = file("${path.module}/probe.py")
+    "stop.py"     = file("${path.module}/stop.py")
+    "ledger.py"   = file("${path.module}/ledger.py")
+    "business.py" = file("${path.module}/business.py")
+    "campaign.py" = file("${path.module}/campaign.py")
+  }
 }
 
 resource "kubernetes_job_v1" "test" {

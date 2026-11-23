@@ -22,7 +22,14 @@ locals {
     "microsoft-storageaccount-plannedfailover/1.0"     = "Microsoft.Storage/storageAccounts"
     "microsoft-virtualmachinescaleset-shutdown/1.0"    = "Microsoft.Compute/virtualMachineScaleSets"
     "microsoft-compute-restart/1.0"                    = "Microsoft.Compute/virtualMachines"
+    "microsoft-compute-cpuPressure/1.0"                = "Microsoft.Compute/virtualMachines"
+    "microsoft-compute-physicalMemoryPressure/1.0"     = "Microsoft.Compute/virtualMachines"
   }
+  pressure_actions = {
+    "microsoft-compute-cpuPressure/1.0"            = 100
+    "microsoft-compute-physicalMemoryPressure/1.0" = 99
+  }
+  agent_verified_targets = toset([for id in var.agent_verified_target_ids : lower(id)])
   destructive = toset([
     "microsoft-managedredis-flushdatabase/1.0",
     "microsoft-managedredis-forceunlink/1.0",
@@ -138,14 +145,29 @@ resource "azapi_resource" "scenario" {
         actionId    = each.value.action_id
         description = each.value.description
         duration    = "PT${each.value.duration_minutes}M"
-        parameters  = [for key, value in each.value.parameters : { key = key, value = value }]
+        parameters = [for key, value in merge(
+          each.value.parameters,
+          contains(keys(local.pressure_actions), each.value.action_id) ? { duration = "PT${each.value.duration_minutes}M" } : {}
+        ) : { key = key, value = value }]
       }]
     }
   }
   lifecycle {
     precondition {
       condition     = contains(keys(local.catalog), each.value.action_id)
-      error_message = "Select an explicitly supported service-direct Action; extension/agent Actions require separate verified integration."
+      error_message = "Select an explicitly supported Action; VM pressure requires verified agent integration and pod Actions use pod_scenarios."
+    }
+    precondition {
+      condition = !contains(keys(local.pressure_actions), each.value.action_id) || try(
+        length(each.value.parameters) == 1 && contains(keys(each.value.parameters), "pressureLevel") &&
+        can(regex("^([1-9][0-9]?|100)$", each.value.parameters["pressureLevel"])) &&
+        tonumber(each.value.parameters["pressureLevel"]) <= local.pressure_actions[each.value.action_id] &&
+        (var.allow_high_pressure_configuration || tonumber(each.value.parameters["pressureLevel"]) <= 50) &&
+        length(each.value.target_ids) == 1 &&
+        alltrue([for id in each.value.target_ids : contains(local.agent_verified_targets, lower(id))]),
+        false
+      )
+      error_message = "VM pressure requires one agent-verified VM and only integer pressureLevel (CPU 1-100, memory 1-99); values above 50 require separate configuration opt-in. duration is derived, not an input parameter."
     }
     precondition {
       condition     = var.allow_destructive_configuration || !contains(local.destructive, each.value.action_id)
@@ -234,6 +256,14 @@ resource "azapi_resource" "configuration" {
         )
         exclude = local.targeting_exclusions
       }
+    }
+  }
+  lifecycle {
+    # API GET normalizes this redundant parent reference to its name.
+    ignore_changes = [body.properties.scenarioId]
+    postcondition {
+      condition     = contains([lower(each.key), lower(self.parent_id)], lower(self.body.properties.scenarioId))
+      error_message = "The configuration must reference its actual parent Scenario, as an ARM ID or the API-normalized name."
     }
   }
 }

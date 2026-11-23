@@ -32,6 +32,7 @@ run "pod_configuration_is_forwarded" {
         target_namespaces      = ["chaos-targets"]
         compatibility_verified = true
       }
+
     }
     pod_scenarios = {
       canary-pod-delete = {
@@ -45,5 +46,27 @@ run "pod_configuration_is_forwarded" {
   assert {
     condition     = keys(output.configuration_ids) == ["canary-pod-delete"]
     error_message = "The Chaos stack must forward installation/Scenario inputs and expose the pod configuration without a service-direct definition."
+  }
+}
+
+run "pressure_qualification_and_high_policy_are_forwarded" {
+  command = plan
+  variables {
+    enabled                           = true
+    scopes                            = ["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test"]
+    agent_verified_target_ids         = ["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.Compute/virtualMachines/canary"]
+    allow_high_pressure_configuration = true
+    scenarios = {
+      memory = {
+        action_id   = "microsoft-compute-physicalMemoryPressure/1.0"
+        description = "Configuration forwarding only."
+        target_ids  = ["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.Compute/virtualMachines/canary"]
+        parameters  = { pressureLevel = "99" }
+      }
+    }
+  }
+  assert {
+    condition     = keys(output.configuration_ids) == ["memory"]
+    error_message = "Both pressure safety inputs must reach the module without relaxing its defaults."
   }
 }

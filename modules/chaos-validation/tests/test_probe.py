@@ -3,6 +3,8 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
+import sys
 import threading
 import unittest
 from unittest.mock import MagicMock, patch
@@ -111,6 +113,65 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(result["failures"], 1)
         self.assertFalse(result["samples"][0]["success"])
         self.assertIn("RequestDeadlineExceeded", output.getvalue())
+
+    def test_streamed_sample_is_emitted_before_next_request(self):
+        received = []
+        opener = MagicMock()
+
+        def opened(*args, **kwargs):
+            if opener.open.call_count == 2:
+                self.assertEqual(len(received), 1)
+            return MagicMock()
+
+        opener.open.side_effect = opened
+        with patch.object(probe.urllib.request, "build_opener", return_value=opener):
+            result = probe.measure("https://private.invalid", 2, 1, emit_sample=received.append)
+        self.assertEqual(received, result["samples"])
+        self.assertNotIn("private.invalid", json.dumps(received))
+
+    def test_streaming_records_have_one_identity_and_preserve_final_report(self):
+        flow = {"canary_url": "https://canary.invalid", "control_url": "https://control.invalid",
+                "operations": 2, "request_timeout": 1, "minimum_success": 1, "stream_evidence": True}
+        output = io.StringIO()
+        with patch.dict(probe.os.environ, {"FLOW": json.dumps(flow)}), \
+                patch.object(probe.urllib.request, "build_opener"), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(probe.main(), 0)
+        records = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual(records[0]["event"], "observation_started")
+        self.assertEqual(records[-1]["event"], "observation_completed")
+        self.assertEqual(len(records), 6)
+        self.assertEqual(len({r["observation_id"] for r in records}), 1)
+        self.assertEqual({r["schema_version"] for r in records}, {1})
+        for stream in ("control", "canary"):
+            self.assertEqual([r["sequence"] for r in records if r.get("stream") == stream], [0, 1])
+        self.assertEqual(records[-1]["result"], "Passed")
+        self.assertEqual(set(records[-1]["measurements"]), {"control", "canary"})
+        self.assertNotIn(".invalid", output.getvalue())
+
+    def test_each_stream_record_is_flushed(self):
+        output = MagicMock()
+        with patch.object(probe.sys, "stdout", output):
+            probe.emit({"event": "measurement"})
+        output.flush.assert_called_once()
+
+    def test_streaming_probe_output_is_consumable_by_independent_stop_process(self):
+        flow = {"canary_url": "https://canary.invalid", "control_url": "https://control.invalid",
+                "operations": 2, "request_timeout": 1, "minimum_success": 1, "stream_evidence": True}
+        output = io.StringIO()
+        with patch.dict(probe.os.environ, {"FLOW": json.dumps(flow)}), \
+                patch.object(probe.urllib.request, "build_opener"), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(probe.main(), 0)
+        policy = {"window_operations": 2, "minimum_success": 1,
+                  "maximum_silence_seconds": 1, "maximum_monitor_seconds": 5}
+        process = subprocess.run(
+            [sys.executable, str(Path(probe.__file__).with_name("stop.py"))],
+            input=output.getvalue(), capture_output=True, text=True, timeout=2,
+            env={**probe.os.environ, "STOP_POLICY": json.dumps(policy)},
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertFalse(json.loads(process.stdout)["stop_recommended"])
 
 
 if __name__ == "__main__":

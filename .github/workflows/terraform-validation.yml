@@ -56,6 +56,13 @@ jobs:
             trap - EXIT
           done
           python3 -m unittest discover -s modules/chaos-validation/tests -p 'test_*.py'
+      - name: Offline pinned business SDK contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/business-tests"
+          "$RUNNER_TEMP/business-tests/bin/pip" install --index-url https://pypi.org/simple --require-hashes -r modules/chaos-validation/requirements-business.txt
+          "$RUNNER_TEMP/business-tests/bin/python" -m unittest discover -s modules/chaos-validation/tests -p sdk_bindings.py
       - name: Install checksum-verified fixed-version TFLint
         shell: bash
         run: |

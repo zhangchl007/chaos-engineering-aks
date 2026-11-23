@@ -10,11 +10,7 @@
 # Crash log files
 crash.log
 
-# Ignore any .tfvars files that are generated automatically for each Terraform run. Most
-# .tfvars files are managed as part of configuration and so should be included in
-# version control.
-#
-# example.tfvars
+# Keep real environment inputs local; commit only redacted examples.
 
 # Ignore override files as they are usually used to override resources locally and so
 # are not checked in
@@ -42,5 +38,26 @@ prodplan
 *.auto.tfvars
 *.private.tfvars
 *.private.tfvars.json
+*.private.json
+/.venv/
 *.tfvars
 !*.example.tfvars
+*.tfvars.json
+!*.example.tfvars.json
+
+# Private keys, credential stores and local authentication files
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+credentials
+credentials.json
+.secrets
+.secrets.*
+
+*.pyc
+*.lock.hcl
+!**/.terraform.lock.hcl

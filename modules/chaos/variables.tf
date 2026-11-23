@@ -40,7 +40,7 @@ variable "scopes" {
 }
 
 variable "scenarios" {
-  description = "One bounded service-direct Action per configuration, with explicit targets."
+  description = "One bounded service-direct or agent-verified VM pressure Action per configuration, with explicit targets."
   type = map(object({
     action_id        = string
     description      = string
@@ -88,6 +88,22 @@ variable "permissions" {
 variable "allow_destructive_configuration" {
   type        = bool
   description = "Opt in to defining destructive Actions; not execution authorization."
+  default     = false
+}
+
+variable "agent_verified_target_ids" {
+  type        = set(string)
+  description = "Explicit VM IDs whose agent prerequisites, permissions, recovery and indirect workload impact have been independently verified; not execution authorization."
+  default     = []
+  validation {
+    condition     = alltrue([for id in var.agent_verified_target_ids : can(regex("(?i)^/subscriptions/[^/*?#\\s]+/resourceGroups/[^/*?#\\s]+/providers/Microsoft\\.Compute/virtualMachines/[^/*?#\\s]+$", id))])
+    error_message = "Agent verification must identify individual VMs without wildcards; VMSS, child resources and discovery scopes are not qualified here."
+  }
+}
+
+variable "allow_high_pressure_configuration" {
+  type        = bool
+  description = "Opt in to configuring VM pressure above 50 percent within Action bounds; requires a reviewed progressive-pressure recovery plan and is not execution authorization."
   default     = false
 }
 

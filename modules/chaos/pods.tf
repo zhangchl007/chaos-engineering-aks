@@ -88,4 +88,12 @@ resource "azapi_resource" "pod_configuration" {
       }
     }
   }
+  lifecycle {
+    # API GET normalizes this redundant parent reference to its name.
+    ignore_changes = [body.properties.scenarioId]
+    postcondition {
+      condition     = contains([lower(each.key), lower(self.parent_id)], lower(self.body.properties.scenarioId))
+      error_message = "The pod configuration must reference its actual parent Scenario, as an ARM ID or the API-normalized name."
+    }
+  }
 }
