@@ -36,8 +36,8 @@ run "authorized_job_meets_restricted_profile" {
     condition = (
       kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].security_context[0].seccomp_profile[0].type == "RuntimeDefault" &&
       kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].node_selector["kubernetes.io/os"] == "linux" &&
-      !kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].container[0].security_context[0].allow_privilege_escalation
-      && kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].container[0].command == tolist(["python3", "/scripts/probe.py"])
+      !kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].container[0].security_context[0].allow_privilege_escalation &&
+      kubernetes_job_v1.test["application"].spec[0].template[0].spec[0].container[0].command == tolist(["python3", "/scripts/probe.py"])
     )
     error_message = "Explicitly enabled Jobs must satisfy restricted Pod admission and target Linux."
   }

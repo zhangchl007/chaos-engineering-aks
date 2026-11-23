@@ -76,9 +76,24 @@ jobs:
       - name: Offline fixed-version policy scan
         env:
           LOG_LEVEL: ERROR
+          CKV_PARSE_ERROR_FAIL: "true"
         shell: bash
         run: |
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/policy-tools"
           "$RUNNER_TEMP/policy-tools/bin/pip" install checkov==3.2.495
-          "$RUNNER_TEMP/policy-tools/bin/checkov" --directory . --framework terraform --skip-download --skip-results-upload --download-external-modules false --compact
+          scan_status=0
+          "$RUNNER_TEMP/policy-tools/bin/checkov" --config-file .github/checkov.json \
+            --directory . --framework terraform --skip-download --skip-results-upload --download-external-modules false --compact \
+            --output cli --output json --output-file-path "$RUNNER_TEMP/policy-report" || scan_status=$?
+          if (( scan_status != 0 && scan_status != 1 )); then
+            exit "$scan_status"
+          fi
+          jq -r --slurpfile policy .github/checkov.json '
+            $policy[0]["soft-fail-on"] as $advisory
+            | .results.failed_checks[]
+            | . as $finding
+            | (if ($advisory | index($finding.check_id)) != null then "warning" else "error" end) as $level
+            | "::\($level) file=\(.file_path | ltrimstr("/")),line=\(.file_line_range[0])::\(.check_id): \(.check_name)"
+          ' "$RUNNER_TEMP/policy-report/results_json.json"
+          exit "$scan_status"
