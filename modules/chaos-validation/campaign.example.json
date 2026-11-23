@@ -1,0 +1,70 @@
+{
+  "campaign_id": "00000000000000000000000000000001",
+  "case_id": "S-01",
+  "environment": "test",
+  "subscription_id": "00000000-0000-0000-0000-000000000001",
+  "tenant_id": "00000000-0000-0000-0000-000000000002",
+  "owner": "REPLACE_WITH_OPERATOR",
+  "targets": [
+    {
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/fixture/providers/Microsoft.Storage/storageAccounts/canary",
+      "role": "canary",
+      "test_owned": false
+    },
+    {
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/fixture/providers/Microsoft.Storage/storageAccounts/control",
+      "role": "control",
+      "test_owned": false
+    }
+  ],
+  "fault_target_ids": [
+    "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/fixture/providers/Microsoft.Storage/storageAccounts/canary"
+  ],
+  "ledger": {
+    "path": "/evidence/operations.sqlite",
+    "durability_qualified": false,
+    "outside_fault_scope": false
+  },
+  "criteria": {
+    "baseline_seconds": 900,
+    "baseline_operations": 1000,
+    "minimum_success": 0.999,
+    "request_deadline_seconds": 1,
+    "maximum_p95_seconds": 0.5,
+    "rto_seconds": 120,
+    "rpo_operations": 0,
+    "recovery_window_seconds": 60,
+    "recovery_windows": 10,
+    "recovery_minimum_operations": 60
+  },
+  "stop_policy": {
+    "streams": ["control"],
+    "window_operations": 60,
+    "minimum_success": 0.99,
+    "maximum_silence_seconds": 15,
+    "maximum_monitor_seconds": 3000
+  },
+  "authorizations": {
+    "traffic": false,
+    "fault": false,
+    "recovery": false,
+    "expanded_scope": false
+  },
+  "qualification": {
+    "support": false,
+    "permissions": false,
+    "resolved_targets": false,
+    "monitor_handoff": false,
+    "recovery_access": false
+  },
+  "recovery": {
+    "owner": "REPLACE_WITH_RECOVERY_OPERATOR",
+    "steps": ["REPLACE_WITH_CASE_SPECIFIC_STOP_RECONCILIATION_AND_RECOVERY_STEPS"]
+  },
+  "window": {
+    "start_at": "REPLACE_WITH_TIMEZONE_AWARE_START",
+    "end_at": "REPLACE_WITH_TIMEZONE_AWARE_END",
+    "maximum_run_seconds": 3000,
+    "cost_ceiling": 0
+  }
+}

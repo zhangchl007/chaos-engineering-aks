@@ -24,11 +24,16 @@ output "subnet_association_id" {
 }
 
 output "private_dns_zone_id" {
-  description = "Private DNS Zone ID for AGFC"
-  value       = azurerm_private_dns_zone.agfc.id
+  description = "Deprecated: no private DNS zone or private frontend is created."
+  value       = null
 }
 
 output "private_dns_zone_name" {
-  description = "Private DNS Zone name for AGFC"
-  value       = azurerm_private_dns_zone.agfc.name
+  description = "Deprecated: no private DNS zone or private frontend is created."
+  value       = null
+}
+
+output "frontend_fqdn" {
+  description = "Public frontend FQDN; does not represent private connectivity."
+  value       = azurerm_application_load_balancer_frontend.agfc.fully_qualified_domain_name
 }

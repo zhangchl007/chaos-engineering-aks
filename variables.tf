@@ -1,39 +1,47 @@
 variable "location" {
+  type        = string
   description = "The resource group location"
   default     = "West US 2"
 }
 
 variable "kube_vnet_name" {
+  type        = string
   description = "AKS VNET name"
   default     = "aks-kubevnet"
 }
 
 variable "kube_version_prefix" {
+  type        = string
   description = "AKS Kubernetes version prefix. Formatted '[Major].[Minor]' like '1.18'. Patch version part (as in '[Major].[Minor].[Patch]') will be set to latest automatically."
   default     = "1.28"
 }
 
 variable "kube_resource_group_name" {
+  type        = string
   description = "The resource group name to be created"
   default     = "rg-aks-tfdemo"
 }
 
 variable "nodepool_nodes_count" {
+  type        = number
   description = "Default nodepool nodes count"
   default     = 2
 }
 
 variable "nodepool_vm_size" {
+  type        = string
   description = "Default nodepool VM size"
   default     = "Standard_D4_v3"
 }
 
 variable "network_dns_service_ip" {
+  type        = string
   description = "CNI DNS service IP"
   default     = "178.51.0.10"
 }
 
 variable "network_service_cidr" {
+  type        = string
   description = "CNI service cidr"
   default     = "178.51.0.0/16"
 }
@@ -42,18 +50,21 @@ variable "address_space" {
   description = "Vnet address_space"
   type        = list(string)
 
-  default = ["10.4.0.0/22"]
+  default = ["10.4.0.0/20"]
 
 }
 
 variable "username" {
+  type        = string
   description = "The username for the AKS cluster"
   default     = "azureuser"
 
 }
 
 variable "ssh_public_key" {
-  default = "~/.ssh/id_rsa.pub"
+  type        = string
+  description = "Optional path to a public SSH key; empty disables the AKS SSH profile."
+  default     = ""
 }
 
 variable "cluster_name" {
@@ -96,6 +107,26 @@ variable "subnets" {
       name : "ingress-subnet"
       address_prefixes : ["10.4.3.0/24"]
       delegation = "Microsoft.ServiceNetworking/trafficControllers"
+    },
+    {
+      name             = "privateendpoint-subnet"
+      address_prefixes = ["10.4.4.0/24"]
+      delegation       = ""
+    },
+    {
+      name             = "mysql-subnet"
+      address_prefixes = ["10.4.5.0/24"]
+      delegation       = "Microsoft.DBforMySQL/flexibleServers"
+    },
+    {
+      name             = "postgresql-subnet"
+      address_prefixes = ["10.4.6.0/24"]
+      delegation       = "Microsoft.DBforPostgreSQL/flexibleServers"
+    },
+    {
+      name             = "vm-subnet"
+      address_prefixes = ["10.4.7.0/24"]
+      delegation       = ""
     }
   ]
 }
@@ -108,7 +139,7 @@ variable "acr_name" {
 variable "use_existing_acr" {
   type        = bool
   description = "Whether to use an existing Azure Container Registry (true) or create a new one (false)"
-  default     = true
+  default     = false
 }
 
 variable "acr_resource_group" {
@@ -232,6 +263,16 @@ variable "bootstrap_rbac_role_definition_name" {
   default     = "Contributor"
 }
 
+variable "cosmos_location" {
+  description = "Optional Cosmos account and primary region override; null uses the platform location. Private Endpoint remains in the platform region. Confirm region access and data residency before selecting another region."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.cosmos_location == null || can(regex("^[a-z][a-z0-9]+$", var.cosmos_location))
+    error_message = "cosmos_location must be null or a lowercase Azure region name without spaces."
+  }
+}
+
 variable "cosmos_account_name" {
   description = "Cosmos DB account name (without env prefix)"
   type        = string
@@ -311,9 +352,10 @@ variable "mysql_admin_user" {
 }
 
 variable "mysql_admin_password" {
-  description = "MySQL admin password"
+  sensitive   = true
+  description = "Optional MySQL admin password override; null or empty generates a strong password for an enabled fixture, stored in protected state."
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "mysql_version" {
@@ -331,7 +373,7 @@ variable "mysql_database_name" {
 variable "mysql_sku_name" {
   description = "MySQL compute SKU"
   type        = string
-  default     = "Standard_D2ds_v4"
+  default     = "GP_Standard_D2ds_v4"
 }
 
 variable "mysql_storage_size" {
@@ -400,8 +442,10 @@ variable "vms" {
     image_publisher     = optional(string, "Canonical")
     image_offer         = optional(string, "0001-com-ubuntu-server-focal")
     image_sku           = optional(string, "20_04-lts-gen2")
-    image_version       = optional(string, "latest")
-    enable_public_ip    = optional(bool, true)
+    image_version       = optional(string)
+    enable_public_ip    = optional(bool, false)
+    attach_nsg          = optional(bool, true)
+    bootstrap_rocketmq  = optional(bool, false)
     nsg_rules = optional(list(object({
       name                       = string
       priority                   = number
@@ -417,4 +461,26 @@ variable "vms" {
     tags          = optional(map(string), {})
   }))
   default = {}
+  validation {
+    condition = !var.components.vm || (length(var.vms) > 0 && alltrue([
+      for vm in values(var.vms) : try(vm.image_version != null && trimspace(vm.image_version) != "" && lower(vm.image_version) != "latest", false)
+    ]))
+    error_message = "Enabled VM fixtures require explicit VMs with tested immutable image versions; the legacy child-module contract is unchanged."
+  }
+  validation {
+    condition = !var.components.vm || alltrue([
+      for name, vm in var.vms : (!vm.enable_public_ip || name == "jumpserver") && (vm.enable_public_ip || !vm.attach_nsg || (anytrue([
+        for rule in vm.nsg_rules :
+        lower(rule.direction) == "inbound" && lower(rule.access) == "deny" &&
+        rule.protocol == "*" && rule.source_address_prefix == "*" &&
+        rule.destination_address_prefix == "*" && rule.destination_port_range == "*"
+        ]) && alltrue([
+        for rule in vm.nsg_rules : lower(rule.direction) != "inbound" || lower(rule.access) != "allow" || (
+          can(cidrnetmask(rule.source_address_prefix)) &&
+          try(tonumber(split("/", rule.source_address_prefix)[1]) >= 24, false)
+        )
+      ])))
+    ])
+    error_message = "Only jumpserver may use a public IP; it receives a dedicated SSH access NSG. Other attached NSGs must deny other inbound traffic and limit Allow sources to /24 or narrower; original templates may remain unattached."
+  }
 }

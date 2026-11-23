@@ -25,4 +25,15 @@ variable "subnets" {
     address_prefixes = list(string)
     delegation       = string
   }))
+  validation {
+    condition     = length(var.subnets) == length(distinct([for s in var.subnets : s.name])) && alltrue([for s in var.subnets : alltrue([for cidr in s.address_prefixes : can(cidrhost(cidr, 0))])])
+    error_message = "Subnets must have unique names and valid CIDRs."
+  }
+  validation {
+    condition = alltrue([for s in var.subnets : contains([
+      "", "Microsoft.ContainerService/managedClusters", "Microsoft.ServiceNetworking/trafficControllers",
+      "Microsoft.DBforMySQL/flexibleServers", "Microsoft.DBforPostgreSQL/flexibleServers"
+    ], s.delegation)])
+    error_message = "Select a supported dedicated subnet delegation."
+  }
 }

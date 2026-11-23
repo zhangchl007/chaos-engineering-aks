@@ -1,0 +1,23 @@
+{
+  "run_id": "00000000000000000000000000000002",
+  "case_id": "S-01",
+  "phase": "baseline",
+  "kind": "blob",
+  "operations": 1000,
+  "interval_seconds": 1,
+  "request_timeout": 1,
+  "maximum_run_seconds": 3000,
+  "minimum_success": 0.999,
+  "streams": {
+    "canary": {
+      "endpoint": "https://canary.blob.core.windows.net",
+      "entity": "chaos-test",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/fixture/providers/Microsoft.Storage/storageAccounts/canary"
+    },
+    "control": {
+      "endpoint": "https://control.blob.core.windows.net",
+      "entity": "chaos-test",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/fixture/providers/Microsoft.Storage/storageAccounts/control"
+    }
+  }
+}

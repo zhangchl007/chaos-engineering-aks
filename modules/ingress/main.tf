@@ -1,6 +1,6 @@
 
 locals {
-  ingress_name = "${replace(random_pet.rg.id, "-", "")}ingress"
+  ingress_name = "${var.env_prefix}-ingress"
 }
 resource "kubernetes_namespace" "ingress" {
   metadata {
@@ -11,13 +11,29 @@ resource "kubernetes_namespace" "ingress" {
   }
 }
 resource "helm_release" "ingress" {
-  name             = local.ingress_name
-  repository       = var.ingress_repository
-  chart            = var.ingress_chart
-  version          = var.ingress_version
-  namespace        = kubernetes_namespace.ingress.metadata[0].name
-  create_namespace = true
-
-
-  depends_on = [kubernetes_namespace.ingress]
+  name            = local.ingress_name
+  repository      = var.ingress_repository
+  chart           = var.ingress_chart
+  version         = var.ingress_version
+  namespace       = kubernetes_namespace.ingress.metadata[0].name
+  atomic          = true
+  cleanup_on_fail = true
+  timeout         = 900
+  values = [yamlencode({
+    controller = {
+      service = {
+        annotations = {
+          "service.beta.kubernetes.io/azure-load-balancer-internal" = "true"
+        }
+        enableHttp = false
+      }
+      extraArgs = {
+        "default-ssl-certificate" = var.tls_secret_name
+      }
+      config = {
+        "ssl-redirect"       = "true"
+        "force-ssl-redirect" = "true"
+      }
+    }
+  })]
 }

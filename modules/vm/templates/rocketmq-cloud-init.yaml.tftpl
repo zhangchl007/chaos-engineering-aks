@@ -1,0 +1,9 @@
+#cloud-config
+write_files:
+  - path: /usr/local/sbin/rocketmq-bootstrap.sh
+    owner: root:root
+    permissions: '0700'
+    content: |
+      ${indent(6, bootstrap_script)}
+runcmd:
+  - [bash, /usr/local/sbin/rocketmq-bootstrap.sh]
